@@ -1,0 +1,73 @@
+@import 'tailwindcss';
+
+/**
+ * Thème clair et dense, accents bleus — repères visuels d'Azure DevOps.
+ * Toutes les couleurs de l'application passent par ces jetons.
+ */
+@theme {
+  --color-accent-50: #eff6fc;
+  --color-accent-100: #deecf9;
+  --color-accent-200: #c7e0f4;
+  --color-accent-300: #71afe5;
+  --color-accent-400: #2b88d8;
+  --color-accent-500: #0078d4;
+  --color-accent-600: #106ebe;
+  --color-accent-700: #005a9e;
+  --color-accent-800: #004578;
+  --color-accent-900: #003966;
+
+  --color-surface: #ffffff;
+  --color-surface-muted: #faf9f8;
+  --color-surface-sunken: #f3f2f1;
+  --color-border-subtle: #edebe9;
+  --color-border-default: #e1dfdd;
+  --color-border-strong: #c8c6c4;
+
+  --color-ink-900: #201f1e;
+  --color-ink-700: #323130;
+  --color-ink-500: #605e5c;
+  --color-ink-400: #8a8886;
+
+  --color-success: #107c10;
+  --color-warning: #ca5010;
+  --color-danger: #d13438;
+
+  --font-sans:
+    'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, 'Helvetica Neue', sans-serif;
+
+  /* Typographie compacte : la densité prime sur l'aération. */
+  --text-xs: 0.6875rem;
+  --text-sm: 0.75rem;
+  --text-base: 0.8125rem;
+  --text-lg: 0.9375rem;
+  --text-xl: 1.125rem;
+  --text-2xl: 1.375rem;
+}
+
+@layer base {
+  html {
+    font-size: 16px;
+  }
+
+  body {
+    @apply bg-surface text-ink-700 font-sans text-base antialiased;
+  }
+
+  *:focus-visible {
+    @apply outline-accent-500 outline-2 outline-offset-1;
+  }
+}
+
+@layer components {
+  /* Barre de défilement fine, comme dans les boards denses. */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-border-strong rounded;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+}

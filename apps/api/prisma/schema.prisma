@@ -1,0 +1,600 @@
+// ---------------------------------------------------------------------------
+// VisioraAI · Plateforme de gestion de projets agile
+// Schéma de base de données — PostgreSQL / Prisma
+// Réf. Cahier des Charges Fonctionnel v1.0 (06/08/2026)
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===========================================================================
+// PARTIE A · GESTION DES ACCÈS
+// ===========================================================================
+
+enum GlobalRole {
+  ADMIN // administration de la plateforme (A.1 : CRUD utilisateurs, projets)
+  MEMBER // utilisateur standard, ses droits viennent de ses rôles projet
+}
+
+/// A.2 · Rôle porté PAR PROJET (un même user peut être PO ici et DEV ailleurs)
+enum ProjectRole {
+  PRODUCT_OWNER
+  SCRUM_MASTER
+  DEVELOPER
+  VIEWER
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  name         String
+  passwordHash String
+  avatarUrl    String?
+  jobTitle     String?
+  globalRole   GlobalRole @default(MEMBER)
+  isActive     Boolean    @default(true) // A.1 · désactivation
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime? // A.1 · suppression logique (préserve l'historique)
+
+  memberships       ProjectMember[]
+  createdProjects   Project[]               @relation("ProjectCreator")
+  assignedItems     WorkItem[]              @relation("WorkItemAssignee")
+  reportedItems     WorkItem[]              @relation("WorkItemReporter")
+  comments          Comment[]
+  attachments       Attachment[]
+  activities        ActivityLog[]
+  notifications     Notification[]
+  notificationPrefs NotificationPreference[]
+  sessions          Session[]
+  declaredPRs       PullRequest[]           @relation("PullRequestAuthor")
+  reviewedPRs       PullRequest[]           @relation("PullRequestReviewer")
+  prEvents          PullRequestEvent[]
+  retroItems        RetrospectiveItem[]
+  createdBranches   Branch[]
+
+  @@index([email])
+  @@index([isActive])
+}
+
+/// Refresh tokens (rotation) — permet la révocation de session côté serveur.
+model Session {
+  id               String   @id @default(uuid())
+  userId           String
+  refreshTokenHash String   @unique
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ===========================================================================
+// PARTIE B · GESTION DES PROJETS
+// ===========================================================================
+
+enum ProjectStatus {
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  ARCHIVED
+}
+
+model Project {
+  id          String        @id @default(uuid())
+  /// Clé courte affichée dans les identifiants de tickets : VIS-142
+  key         String        @unique
+  name        String
+  description String?
+  company     String? // B.1 · entreprise cliente
+  status      ProjectStatus @default(ACTIVE)
+  startDate   DateTime?     @db.Date
+  targetDate  DateTime?     @db.Date
+  color       String? // pastille couleur dans le sélecteur de projet
+  /// Compteur du dernier numéro de ticket émis (incrémenté en transaction)
+  lastItemNumber Int        @default(0)
+  createdById String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  archivedAt  DateTime?
+
+  createdBy   User            @relation("ProjectCreator", fields: [createdById], references: [id])
+  members     ProjectMember[]
+  repositories Repository[]
+  workItems   WorkItem[]
+  sprints     Sprint[]
+  labels      Label[]
+  milestones  Milestone[]
+  activities  ActivityLog[]
+  notifications Notification[]
+
+  @@index([status])
+}
+
+/// B.1 · Affectation des utilisateurs + A.2 · Rôle par projet
+model ProjectMember {
+  id        String      @id @default(uuid())
+  projectId String
+  userId    String
+  role      ProjectRole @default(DEVELOPER)
+  /// Capacité indicative en points par sprint (planification)
+  capacity  Int?
+  joinedAt  DateTime    @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+}
+
+// ===========================================================================
+// PÉRIMÈTRE TECHNIQUE · Dépôts Git EXTERNES (référencement uniquement)
+// ===========================================================================
+
+enum GitProvider {
+  GITHUB
+  GITLAB
+  BITBUCKET
+  AZURE_DEVOPS
+  OTHER
+}
+
+/// Référence vers un dépôt hébergé ailleurs. Aucun code n'est stocké ici.
+model Repository {
+  id            String      @id @default(uuid())
+  projectId     String
+  name          String
+  provider      GitProvider @default(GITHUB)
+  url           String
+  defaultBranch String      @default("main")
+  /// Renseigné seulement si la synchro API est activée (phase 5)
+  externalId    String?
+  lastSyncedAt  DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  branches     Branch[]
+  pullRequests PullRequest[]
+
+  @@unique([projectId, name])
+}
+
+/// E.1 · Cache des branches, alimente la liste déroulante et la "création" de branche.
+model Branch {
+  id           String   @id @default(uuid())
+  repositoryId String
+  name         String
+  /// true = créée depuis l'app (pas encore vue sur le remote)
+  isLocalOnly  Boolean  @default(false)
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  repository        Repository    @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  createdBy         User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  pullRequestsFrom  PullRequest[] @relation("PullRequestSource")
+  pullRequestsTo    PullRequest[] @relation("PullRequestTarget")
+
+  @@unique([repositoryId, name])
+}
+
+// ===========================================================================
+// PARTIE C · BACKLOG & PLANIFICATION
+// ===========================================================================
+
+enum SprintStatus {
+  PLANNED
+  ACTIVE
+  COMPLETED
+}
+
+model Sprint {
+  id        String       @id @default(uuid())
+  projectId String
+  name      String
+  /// C.3 · Objectif de sprint
+  goal      String?
+  startDate DateTime     @db.Date
+  endDate   DateTime     @db.Date
+  status    SprintStatus @default(PLANNED)
+
+  /// Figés à la clôture — alimentent le graphique de vélocité (F.1) sans recalcul
+  committedPoints Int?
+  completedPoints Int?
+  closedAt        DateTime?
+  /// C.3 · Synthèse libre de la rétrospective (les points détaillés : RetrospectiveItem)
+  retroSummary    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project    Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workItems  WorkItem[]
+  snapshots  SprintSnapshot[]
+  retroItems RetrospectiveItem[]
+
+  @@index([projectId, status])
+}
+
+/// F.1 · Point quotidien figé : burndown fiable même après re-estimation.
+model SprintSnapshot {
+  id              String   @id @default(uuid())
+  sprintId        String
+  date            DateTime @db.Date
+  totalPoints     Int
+  remainingPoints Int
+  completedPoints Int
+  totalItems      Int
+  completedItems  Int
+  createdAt       DateTime @default(now())
+
+  sprint Sprint @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+
+  @@unique([sprintId, date])
+}
+
+enum RetroCategory {
+  WENT_WELL
+  TO_IMPROVE
+  ACTION_ITEM
+}
+
+model RetrospectiveItem {
+  id        String        @id @default(uuid())
+  sprintId  String
+  category  RetroCategory
+  content   String
+  authorId  String?
+  /// Pour les ACTION_ITEM : suivi de réalisation
+  isDone    Boolean       @default(false)
+  createdAt DateTime      @default(now())
+
+  sprint Sprint @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  author User?  @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([sprintId, category])
+}
+
+/// C.2 · Étiquettes, définies au niveau projet
+model Label {
+  id        String   @id @default(uuid())
+  projectId String
+  name      String
+  color     String   @default("#0078D4")
+  createdAt DateTime @default(now())
+
+  project   Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workItems WorkItemLabel[]
+
+  @@unique([projectId, name])
+}
+
+model WorkItemLabel {
+  workItemId String
+  labelId    String
+  assignedAt DateTime @default(now())
+
+  workItem WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  label    Label    @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([workItemId, labelId])
+  @@index([labelId])
+}
+
+/// F.3 · Jalons affichés dans le calendrier / la roadmap
+model Milestone {
+  id          String   @id @default(uuid())
+  projectId   String
+  name        String
+  description String?
+  date        DateTime @db.Date
+  isReached   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, date])
+}
+
+// ===========================================================================
+// PARTIES C.1 & D · TICKETS (modèle unifié Epic / Story / Sous-tâche)
+// ===========================================================================
+
+enum WorkItemType {
+  EPIC
+  STORY
+  SUBTASK
+  BUG
+}
+
+/// D.1 · Colonnes du Task Board
+enum WorkItemStatus {
+  TODO // À faire
+  IN_PROGRESS // En cours
+  IN_TEST // En test
+  READY_FOR_APPROVAL // Prêt pour approbation
+  DONE // Terminé
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model WorkItem {
+  id        String @id @default(uuid())
+  projectId String
+  /// Numéro séquentiel par projet → affiché "VIS-142"
+  number    Int
+
+  type   WorkItemType
+  title  String
+  status WorkItemStatus @default(TODO)
+
+  /// D.2 · Détails Product Owner (description & contexte métier)
+  description    String?
+  /// D.2 · Détails développeur (notes techniques d'implémentation)
+  technicalNotes String?
+
+  priority    Priority @default(MEDIUM)
+  /// D.2 · Estimation (échelle Fibonacci côté UI)
+  storyPoints Int?
+
+  /// C.1 · Ordre dans le backlog / la colonne (LexoRank : réordonnancement O(1))
+  rank String
+
+  /// F.2 · Tâches bloquées du dashboard
+  isBlocked     Boolean @default(false)
+  blockedReason String?
+
+  /// C.4 · Roadmap : positionnement temporel (surtout pour les EPIC)
+  startDate DateTime? @db.Date
+  dueDate   DateTime? @db.Date
+
+  parentId   String? // EPIC ← STORY ← SUBTASK
+  sprintId   String?
+  assigneeId String?
+  reporterId String
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  closedAt  DateTime?
+  deletedAt DateTime?
+
+  project            Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent             WorkItem?             @relation("WorkItemHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children           WorkItem[]            @relation("WorkItemHierarchy")
+  sprint             Sprint?               @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  assignee           User?                 @relation("WorkItemAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  reporter           User                  @relation("WorkItemReporter", fields: [reporterId], references: [id])
+  labels             WorkItemLabel[]
+  acceptanceCriteria AcceptanceCriterion[]
+  attachments        Attachment[]
+  comments           Comment[]
+  pullRequests       PullRequest[]
+
+  @@unique([projectId, number])
+  @@index([projectId, status])
+  @@index([projectId, type, rank])
+  @@index([sprintId, status])
+  @@index([assigneeId])
+  @@index([parentId])
+  @@index([deletedAt])
+}
+
+/// D.2 · Critères d'acceptation (Definition of Done)
+model AcceptanceCriterion {
+  id         String   @id @default(uuid())
+  workItemId String
+  content    String
+  isMet      Boolean  @default(false)
+  position   Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  workItem WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+
+  @@index([workItemId, position])
+}
+
+/// D.2 · Pièces jointes — le binaire vit dans un stockage objet (S3/MinIO)
+model Attachment {
+  id           String   @id @default(uuid())
+  workItemId   String
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  /// Clé objet dans le bucket (jamais l'URL signée, qui est éphémère)
+  storageKey   String
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  workItem   WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  uploadedBy User     @relation(fields: [uploadedById], references: [id])
+
+  @@index([workItemId])
+}
+
+// ===========================================================================
+// PARTIE E · WORKFLOW PULL REQUEST
+// ===========================================================================
+
+enum PullRequestStatus {
+  OPEN // PR déclarée par le développeur
+  READY_FOR_APPROVAL // le dev la marque prête
+  APPROVED // le PO approuve
+  CHANGES_REQUESTED // le PO rejette avec commentaire
+  MERGED
+  CLOSED
+}
+
+/// E.1 · Déclaration manuelle par le développeur ; l'app ne fait que référencer.
+model PullRequest {
+  id           String            @id @default(uuid())
+  workItemId   String
+  repositoryId String
+  title        String
+  /// Numéro/URL de la PR sur la plateforme Git externe
+  externalNumber Int?
+  externalUrl  String?
+  status       PullRequestStatus @default(OPEN)
+
+  sourceBranchId String
+  targetBranchId String?
+  /// Conservé en clair si la branche cible n'est pas encore référencée
+  targetBranchName String?
+
+  declaredById String
+  reviewedById String?
+  reviewedAt   DateTime?
+  /// Motif du dernier rejet (l'historique complet est dans PullRequestEvent)
+  reviewComment String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workItem     WorkItem           @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  repository   Repository         @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  sourceBranch Branch             @relation("PullRequestSource", fields: [sourceBranchId], references: [id])
+  targetBranch Branch?            @relation("PullRequestTarget", fields: [targetBranchId], references: [id])
+  declaredBy   User               @relation("PullRequestAuthor", fields: [declaredById], references: [id])
+  reviewedBy   User?              @relation("PullRequestReviewer", fields: [reviewedById], references: [id])
+  events       PullRequestEvent[]
+
+  @@index([workItemId])
+  @@index([status])
+}
+
+/// E.1 · Historique des statuts de la PR
+model PullRequestEvent {
+  id            String             @id @default(uuid())
+  pullRequestId String
+  actorId       String?
+  fromStatus    PullRequestStatus?
+  toStatus      PullRequestStatus
+  comment       String?
+  createdAt     DateTime           @default(now())
+
+  pullRequest PullRequest @relation(fields: [pullRequestId], references: [id], onDelete: Cascade)
+  actor       User?       @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([pullRequestId, createdAt])
+}
+
+// ===========================================================================
+// PARTIE G · COLLABORATION
+// ===========================================================================
+
+/// G.2 · Fil de commentaires (réponses imbriquées à un niveau)
+model Comment {
+  id         String   @id @default(uuid())
+  workItemId String
+  authorId   String
+  body       String
+  parentId   String?
+  /// Utilisateurs mentionnés (@) → déclenche une notification
+  mentionedUserIds String[] @default([])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  editedAt   DateTime?
+  deletedAt  DateTime?
+
+  workItem WorkItem  @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  author   User      @relation(fields: [authorId], references: [id])
+  parent   Comment?  @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  Comment[] @relation("CommentThread")
+
+  @@index([workItemId, createdAt])
+}
+
+enum EntityType {
+  PROJECT
+  WORK_ITEM
+  SPRINT
+  PULL_REQUEST
+  COMMENT
+  USER
+}
+
+/// G.2 · Historique des modifications (audit générique, un enregistrement par champ modifié)
+model ActivityLog {
+  id         String     @id @default(uuid())
+  projectId  String?
+  entityType EntityType
+  entityId   String
+  actorId    String?
+  /// created | updated | deleted | status_changed | assigned | commented ...
+  action     String
+  field      String?
+  oldValue   String?
+  newValue   String?
+  metadata   Json?
+  createdAt  DateTime   @default(now())
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actor   User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([projectId, createdAt])
+}
+
+enum NotificationType {
+  ITEM_ASSIGNED
+  ITEM_STATUS_CHANGED
+  ITEM_COMMENTED
+  ITEM_MENTIONED
+  PR_DECLARED
+  PR_READY_FOR_APPROVAL
+  PR_APPROVED
+  PR_CHANGES_REQUESTED
+  SPRINT_STARTED
+  SPRINT_CLOSED
+  PROJECT_MEMBER_ADDED
+}
+
+/// G.1 · Notifications in-app (push WebSocket) + trace de l'envoi email
+model Notification {
+  id         String           @id @default(uuid())
+  userId     String
+  projectId  String?
+  type       NotificationType
+  title      String
+  body       String?
+  entityType EntityType?
+  entityId   String?
+  isRead     Boolean          @default(false)
+  readAt     DateTime?
+  emailSentAt DateTime?
+  createdAt  DateTime         @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+}
+
+model NotificationPreference {
+  id     String           @id @default(uuid())
+  userId String
+  type   NotificationType
+  inApp  Boolean          @default(true)
+  email  Boolean          @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+}
