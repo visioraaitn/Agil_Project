@@ -2,9 +2,10 @@
   "extends": "@visiora/tsconfig/node.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "baseUrl": "./",
+    "types": ["node", "jest"],
+    // Chemins relatifs au tsconfig : `baseUrl` est déprécié depuis TypeScript 7.
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     },
     "declaration": false,
     "declarationMap": false,

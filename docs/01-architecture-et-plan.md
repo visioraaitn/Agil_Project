@@ -145,15 +145,50 @@ Convention API : `/api/v1/projects/:projectId/work-items` — le `projectId` dan
 
 ## 3. Plan de livraison par phases
 
-### Phase 0 · Fondations (~2 j)
+> **Avancement** — phases 0 et 1 livrées (backend). Le front de la phase 1 reste à faire.
+
+### Phase 0 · Fondations (~2 j) — ✔ livrée
 Monorepo, Docker Compose, Prisma + migration initiale, seed, CI lint/test/build, AppShell + sidebar
 avec routes vides.
 *Fin de phase :* `pnpm dev` lance API + web, `/health` répond, la coquille visuelle est en place.
 
-### Phase 1 · MVP — Auth + Projets (A + B) (~1 sem.)
+### Phase 1 · MVP — Auth + Projets (A + B) (~1 sem.) — ✔ backend livré
 Login JWT + refresh, CRUD utilisateurs (admin), CRUD projets, affectation des membres avec rôle par
-projet, guards RBAC bout en bout, vue portefeuille, sélecteur de projet.
-*Fin de phase :* un admin crée un projet, ajoute un PO et un dev, chacun voit ce qu'il doit voir.
+projet, guards RBAC bout en bout.
+*Reste à faire :* les écrans (connexion, portefeuille, administration des comptes, membres du
+projet) — la navigation existe, les pages sont encore des placeholders.
+
+#### Chaîne d'authentification
+
+```
+POST /auth/login
+  └─ IdentityProvider « local »  ── vérifie le mot de passe (bcrypt)
+       └─ access token JWT 15 min   → en mémoire côté front (jamais localStorage)
+       └─ refresh token opaque 7 j  → cookie httpOnly, path /api/v1/auth
+                                      empreinte HMAC en base (table Session)
+
+POST /auth/refresh → rotation : l'ancien est révoqué, un nouveau est émis.
+                     Rejouer un token consommé échoue → vol détectable.
+```
+
+Le point d'extension SSO est l'interface `IdentityProvider` : un provider transforme des
+informations d'entrée en une identité vérifiée (une adresse email), et rien d'autre. Le
+rattachement au compte, les rôles et les sessions restent côté `AuthService`.
+
+#### Chaîne d'autorisation
+
+```
+requête ─→ JwtAuthGuard          vérifie le JWT, RELIT l'utilisateur en base
+        │                        (désactivation effective immédiatement)
+        └─→ ProjectPermissionGuard
+              1. résout :projectId (UUID ou clé courte « VIS »)
+              2. lit le rôle de l'utilisateur SUR CE PROJET (table ProjectMember)
+              3. appartenance = droit de lecture ; sinon 403 NOT_A_PROJECT_MEMBER
+              4. @RequirePermission(...) → can() sur la matrice partagée
+```
+
+Le token ne contient aucun rôle : il prouve l'identité, pas les droits. Un changement de rôle ou
+un retrait de membre prend donc effet à la requête suivante, sans révocation de token à gérer.
 
 ### Phase 2 · MVP — Backlog + Board (C.1, C.2, D) (~1,5 sem.)
 Epics/Stories/Sous-tâches, backlog hiérarchique avec réordonnancement DnD, labels, priorité,
@@ -187,12 +222,14 @@ structurés, déploiement.
 ## 4. Hypothèses retenues (à corriger si besoin)
 
 1. **Mono-organisation** : instance interne VisioraAI, pas de multi-tenant. Un `Admin` voit tout.
-2. **Authentification locale** (email + mot de passe) ; SSO Microsoft Entra prévu comme extension.
+2. ✔ **Confirmé** — **Authentification locale** (email + mot de passe). SSO Microsoft Entra reporté,
+   architecturé comme provider d'identité ajoutable (`IdentityProvider`).
 3. **Pas d'auto-inscription** : seul un Admin crée les comptes.
-4. **Le Scrum Master** gère sprints/rétrospectives et le backlog, mais n'approuve pas les PR
-   (le cahier des charges réserve l'approbation au PO).
-5. **« Création de branche »** = enregistrement d'une référence dans l'app (`isLocalOnly`), sans
-   appel à l'API Git en MVP ; la synchro réelle arrive en phase 4 si tu fournis un token.
+4. ✔ **Confirmé** — **Le Scrum Master** gère sprints, rétrospectives et backlog, mais n'approuve pas
+   les PR : `pr:approve` n'est détenue que par le Product Owner.
+5. ✔ **Confirmé** — **Dépôts en lecture seule.** L'application lit les branches via l'API GitHub et
+   n'écrit jamais sur le dépôt. La « création de branche » de E.1 enregistre une référence locale
+   (`Branch.isLocalOnly`) que la synchronisation rapprochera de la branche réelle.
 6. **Suppression = soft delete** partout (utilisateurs, tickets, commentaires) pour préserver l'audit.
 7. **Colonnes du board fixes** (les 5 du cahier des charges), personnalisation non prévue.
 8. **Story points** : Fibonacci 1-2-3-5-8-13-21, portés par les Stories (les Epics agrègent).

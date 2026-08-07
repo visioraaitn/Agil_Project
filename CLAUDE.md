@@ -39,8 +39,9 @@ Commence par les points 2 et 3.
 
 # État du projet (mis à jour à chaque phase)
 
-**Phase courante : phase 0 terminée — scaffolding + schéma DB.**
-Prochaine étape : phase 1 (Auth + Utilisateurs + Projets + RBAC).
+**Phase courante : phase 1 terminée — Auth + Utilisateurs + Projets + RBAC (backend).**
+Prochaine étape : phase 2 (Backlog + Task Board), et le front des écrans de la phase 1,
+qui n'existe encore qu'à l'état de placeholders.
 
 Lire en début de session : [`docs/01-architecture-et-plan.md`](docs/01-architecture-et-plan.md)
 (décisions de stack, arborescence, plan par phases, hypothèses retenues).
@@ -55,6 +56,43 @@ Lire en début de session : [`docs/01-architecture-et-plan.md`](docs/01-architec
 - `.env` **unique à la racine**, lu par l'API (`@nestjs/config`) et par Vite (`envDir`).
 - ESLint : `consistent-type-imports` désactivée sur `apps/api` (casse l'injection de dépendances NestJS).
 
+## Sécurité et RBAC (phase 1) — règles à ne pas contourner
+
+- **Le token ne porte que l'identité** (`sub`, `email`). Aucun rôle, aucune permission dedans.
+  Rôles et droits sont relus en base à chaque requête : un retrait de membre ou un changement
+  de rôle prend effet immédiatement, sans attendre l'expiration du token.
+- **Jamais de test de rôle en dur.** Interdiction d'écrire `role === 'PRODUCT_OWNER'` : toute
+  décision passe par `@RequirePermission('...')` et la matrice `can()`. L'approbation de PR est
+  la permission `pr:approve`, détenue par le seul PO.
+- **Deux guards globaux** (`app.module.ts`) : `JwtAuthGuard` puis `ProjectPermissionGuard`.
+  Sécurité fermée par défaut — une route est authentifiée sauf `@Public()`, et toute route
+  portant `:projectId` exige l'appartenance au projet.
+- **Refresh token** : valeur aléatoire opaque (pas un JWT), stockée en base sous forme d'empreinte
+  HMAC, transmise en cookie `httpOnly` limité à `…/auth`. Rotation à chaque usage ; rejouer un
+  token déjà consommé échoue.
+- **Accès SSO** : `IdentityProvider` (`modules/auth/identity/`) est le point d'extension.
+  Ajouter Entra = écrire `EntraIdentityProvider` et l'inscrire dans `IDENTITY_PROVIDERS`.
+  Rien d'autre dans la chaîne d'authentification ne bouge.
+- **Invariants** : la plateforme garde au moins un Admin ; un projet garde au moins un Product
+  Owner (sans lui, plus personne ne peut approuver de PR).
+
+## Surface API livrée
+
+```
+POST   /auth/login · /auth/refresh · /auth/logout · /auth/change-password
+GET    /auth/me
+GET    /users · POST /users · GET|PATCH|DELETE /users/:userId
+POST   /users/:userId/reset-password · PATCH /users/me
+GET    /projects · POST /projects
+GET|PATCH|DELETE /projects/:projectId          (DELETE = archivage)
+GET    /projects/:projectId/access             (rôle + permissions effectives)
+GET|POST /projects/:projectId/members
+PATCH|DELETE /projects/:projectId/members/:userId
+```
+
+`:projectId` accepte l'UUID **ou** la clé courte (`VIS`) ; le guard résout l'identifiant réel
+une fois et l'expose aux contrôleurs via `@ProjectId()`.
+
 ## Conventions
 
 - Routes API : `/api/v1/projects/:projectId/...` — le `projectId` dans l'URL permet au guard de résoudre le rôle par projet.
@@ -66,8 +104,14 @@ Lire en début de session : [`docs/01-architecture-et-plan.md`](docs/01-architec
 
 `pnpm infra:up` · `pnpm db:migrate` · `pnpm db:seed` · `pnpm dev` · `pnpm typecheck` · `pnpm lint`
 
-## Questions encore ouvertes
+## Questions tranchées par le client (07/08/2026)
 
-1. « Création de branche » : appel réel à l'API Git, ou simple référence enregistrée dans l'app ? (hypothèse : référence seule)
-2. Authentification locale ou SSO Microsoft Entra ? (hypothèse : locale)
-3. Le Scrum Master peut-il approuver une PR ? (hypothèse : non, PO et Admin uniquement)
+1. **Auth locale JWT.** SSO Entra reporté, architecturé comme provider ajoutable. ✔ fait
+2. **Aucun rôle dans le token** ; permissions par projet résolues en base à chaque requête. ✔ fait
+3. **Branches Git référencées uniquement** — lecture via API GitHub, jamais d'écriture. → phase 4
+4. **Approbation PR = permission RBAC réservée au PO**, jamais de test de rôle en dur. ✔ matrice en place
+
+## À trancher avant la phase 4
+
+- Quel compte/token GitHub pour la lecture des branches : une app GitHub d'organisation,
+  ou un token par projet saisi dans les paramètres ? (impacte le modèle `Repository`)

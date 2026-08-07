@@ -1,9 +1,9 @@
 {
   "extends": "@visiora/tsconfig/react.json",
   "compilerOptions": {
-    "baseUrl": ".",
+    // Chemins relatifs au tsconfig : `baseUrl` est déprécié depuis TypeScript 7.
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     },
     "types": ["vite/client"]
   },

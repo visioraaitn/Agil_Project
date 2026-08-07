@@ -1,5 +1,5 @@
 import { ArgumentMetadata, BadRequestException, PipeTransform } from '@nestjs/common';
-import { ZodError, ZodSchema } from 'zod';
+import { ZodError, ZodType, ZodTypeDef } from 'zod';
 
 /**
  * Applique un schéma Zod de @visiora/shared à un body/query/param.
@@ -8,7 +8,12 @@ import { ZodError, ZodSchema } from 'zod';
  * Usage : `@Body(new ZodValidationPipe(loginSchema)) dto: LoginInput`
  */
 export class ZodValidationPipe<T> implements PipeTransform<unknown, T> {
-  constructor(private readonly schema: ZodSchema<T>) {}
+  /**
+   * L'entrée est typée `unknown` et non `T` : un schéma portant des `.default()`
+   * (pagination) produit un type de sortie plus riche que son entrée, et
+   * `ZodSchema<T>` exigerait à tort que les deux coïncident.
+   */
+  constructor(private readonly schema: ZodType<T, ZodTypeDef, unknown>) {}
 
   transform(value: unknown, _metadata: ArgumentMetadata): T {
     try {
