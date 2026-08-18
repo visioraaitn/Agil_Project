@@ -8,6 +8,8 @@ import {
   Paginated,
   UpdateProfileInput,
   UpdateUserInput,
+  UserDirectoryEntry,
+  UserDirectoryQuery,
   UserSummary,
 } from '@visiora/shared';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -68,6 +70,31 @@ export class UsersService {
       pageSize: query.pageSize,
       totalPages: Math.max(1, Math.ceil(total / query.pageSize)),
     };
+  }
+
+  /**
+   * Annuaire des comptes actifs, accessible à tout utilisateur authentifié.
+   * Volontairement pauvre en champs : il sert à choisir une personne, pas à
+   * consulter son dossier.
+   */
+  async directory(query: UserDirectoryQuery): Promise<UserDirectoryEntry[]> {
+    return this.prisma.user.findMany({
+      where: {
+        deletedAt: null,
+        isActive: true,
+        ...(query.search
+          ? {
+              OR: [
+                { name: { contains: query.search, mode: 'insensitive' } },
+                { email: { contains: query.search, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
+      select: { id: true, name: true, email: true, avatarUrl: true },
+      orderBy: { name: 'asc' },
+      take: 200,
+    });
   }
 
   async getById(userId: string): Promise<UserSummary> {

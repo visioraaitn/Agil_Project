@@ -3,6 +3,10 @@ dist/
 build/
 .turbo/
 coverage/
+playwright-report/
+test-results/
+apps/web/playwright-report/
+apps/web/test-results/
 
 .env
 .env.local
@@ -27,3 +31,4 @@ apps/api/generated/
 
 docker/volumes/
 uploads/
+backups/

@@ -20,12 +20,15 @@ import {
   ResetPasswordInput,
   UpdateProfileInput,
   UpdateUserInput,
+  UserDirectoryEntry,
+  UserDirectoryQuery,
   UserSummary,
   createUserSchema,
   listUsersQuerySchema,
   resetPasswordSchema,
   updateProfileSchema,
   updateUserSchema,
+  userDirectoryQuerySchema,
 } from '@visiora/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -45,6 +48,19 @@ export class UsersController {
     @Body(new ZodValidationPipe(updateProfileSchema)) dto: UpdateProfileInput,
   ): Promise<UserSummary> {
     return this.users.updateOwnProfile(user.id, dto);
+  }
+
+  /**
+   * Annuaire ouvert à tout utilisateur authentifié : sans lui, un Product Owner
+   * — qui détient `project:member:manage` mais pas `user:manage` — ne pourrait
+   * désigner personne à affecter à son projet.
+   */
+  @Get('directory')
+  @ApiOperation({ summary: 'Annuaire des comptes actifs (nom, email, avatar)' })
+  directory(
+    @Query(new ZodValidationPipe(userDirectoryQuerySchema)) query: UserDirectoryQuery,
+  ): Promise<UserDirectoryEntry[]> {
+    return this.users.directory(query);
   }
 
   @Get()

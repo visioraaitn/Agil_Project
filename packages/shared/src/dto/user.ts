@@ -42,6 +42,24 @@ export const listUsersQuerySchema = paginationSchema.extend({
 });
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 
+export const userDirectoryQuerySchema = z.object({
+  search: z.string().trim().max(120).optional(),
+});
+export type UserDirectoryQuery = z.infer<typeof userDirectoryQuerySchema>;
+
+/**
+ * Annuaire minimal, lisible par tout utilisateur authentifié : il alimente les
+ * sélecteurs (affectation d'un membre, assignation d'un ticket). Il n'expose ni
+ * rôle global, ni statut d'activation, ni date de dernière connexion — ces
+ * informations restent réservées à `user:manage`.
+ */
+export interface UserDirectoryEntry {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl: string | null;
+}
+
 export interface UserSummary {
   id: string;
   email: string;

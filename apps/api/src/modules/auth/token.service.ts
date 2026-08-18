@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { Env } from '../../config/env';
 
@@ -9,6 +9,8 @@ export interface AccessTokenPayload {
   /** Identifiant de l'utilisateur — le token ne porte QUE l'identité. */
   sub: string;
   email: string;
+  /** Identifiant unique de l'émission (ajouté à la signature). */
+  jti?: string;
 }
 
 export interface IssuedRefreshToken {
@@ -47,11 +49,20 @@ export class TokenService {
     return parseDurationSeconds(this.config.get('JWT_REFRESH_TTL', { infer: true }));
   }
 
+  /**
+   * `jti` rend chaque émission unique. Sans lui, deux tokens signés dans la
+   * même seconde pour le même utilisateur sont binairement identiques (`iat`
+   * est en secondes) : impossible de les distinguer dans les journaux, et
+   * aucune révocation ciblée envisageable.
+   */
   signAccessToken(payload: AccessTokenPayload): string {
-    return this.jwt.sign(payload, {
-      secret: this.config.get('JWT_ACCESS_SECRET', { infer: true }),
-      expiresIn: this.accessTtlSeconds,
-    });
+    return this.jwt.sign(
+      { ...payload, jti: randomUUID() },
+      {
+        secret: this.config.get('JWT_ACCESS_SECRET', { infer: true }),
+        expiresIn: this.accessTtlSeconds,
+      },
+    );
   }
 
   verifyAccessToken(token: string): AccessTokenPayload {

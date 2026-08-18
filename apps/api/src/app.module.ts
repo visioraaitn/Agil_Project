@@ -7,6 +7,13 @@ import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { UsersModule } from './modules/users/users.module';
+import { WorkItemsModule } from './modules/work-items/work-items.module';
+import { LabelsModule } from './modules/labels/labels.module';
+import { SprintsModule } from './modules/sprints/sprints.module';
+import { RepositoriesModule } from './modules/repositories/repositories.module';
+import { CollaborationModule } from './modules/collaboration/collaboration.module';
+import { ReportsModule } from './modules/reports/reports.module';
+import { AttachmentsModule } from './modules/attachments/attachments.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { ProjectPermissionGuard } from './common/guards/project-permission.guard';
 import { validateEnv } from './config/env';
@@ -25,12 +32,15 @@ import { validateEnv } from './config/env';
     AuthModule,
     UsersModule,
     ProjectsModule,
+    WorkItemsModule,
+    LabelsModule,
+    SprintsModule,
+    RepositoriesModule,
+    CollaborationModule,
+    ReportsModule,
+    AttachmentsModule,
     HealthModule,
-    // Phase 2 : WorkItemsModule, LabelsModule, BoardModule
-    // Phase 3 : SprintsModule
-    // Phase 4 : RepositoriesModule, PullRequestsModule
-    // Phase 5 : CommentsModule, ActivityModule, NotificationsModule, RealtimeModule
-    // Phase 6 : ReportsModule, SearchModule
+    // Phase 5 suite : RealtimeModule, email jobs
   ],
   providers: [
     /**

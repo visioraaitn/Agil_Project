@@ -1,5 +1,5 @@
 import { Construction } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn } from '@/lib/utils';
 
 interface PlaceholderPageProps {
   title: string;

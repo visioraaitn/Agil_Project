@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
-import { ApiError } from './api-client';
+import { ApiError } from '@/lib/api-client';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -21,8 +21,11 @@ export const queryClient = new QueryClient({
  */
 export const queryKeys = {
   session: ['session'] as const,
+  users: (filters?: unknown) => ['users', filters ?? {}] as const,
   projects: ['projects'] as const,
+  projectList: (filters?: unknown) => ['projects', 'list', filters ?? {}] as const,
   project: (projectId: string) => ['projects', projectId] as const,
+  projectAccess: (projectId: string) => ['projects', projectId, 'access'] as const,
   projectMembers: (projectId: string) => ['projects', projectId, 'members'] as const,
   backlog: (projectId: string) => ['projects', projectId, 'backlog'] as const,
   board: (projectId: string, sprintId?: string) =>

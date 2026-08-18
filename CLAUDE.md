@@ -39,9 +39,25 @@ Commence par les points 2 et 3.
 
 # État du projet (mis à jour à chaque phase)
 
-**Phase courante : phase 1 terminée — Auth + Utilisateurs + Projets + RBAC (backend).**
-Prochaine étape : phase 2 (Backlog + Task Board), et le front des écrans de la phase 1,
-qui n'existe encore qu'à l'état de placeholders.
+**Phase courante : phase 7 en cours — Durcissement produit.**
+Livré dans cette phase : filtres backlog/board persistés dans l'URL, rate limiting API configurable,
+tests E2E Playwright des parcours critiques, poignées DnD focusables et capteurs clavier,
+profil utilisateur, changement de mot de passe, logs JSON HTTP, scripts sauvegarde/restauration DB.
+Prochaine étape : stabilisation finale et choix infra cible.
+
+Écrans livrés : connexion, portefeuille, vue d'ensemble projet + membres, administration
+des comptes, **backlog arborescent avec glisser-déposer, Task Board Kanban 5 colonnes,
+panneau de détail (description PO, notes dev, critères d'acceptation, points, étiquettes,
+sous-tâches)**, **sprints (création, objectif, clôture, points figés, rétrospective)**,
+**roadmap des epics datés**, **dépôts Git référencés, branches locales, déclaration de PR,
+statut prête pour approbation, approbation/rejet PO avec historique**.
+**Commentaires sur tickets, mentions avec notifications in-app, historique d'activité par ticket,
+menu notifications utilisateur.** **Dashboard projet, burndown, vélocité, tâches bloquées,
+calendrier projet, recherche globale.** **Filtres backlog/board partageables par URL,
+rate limiting HTTP configurable, tests E2E login/navigation/filtres, DnD clavier,
+profil/mot de passe, logs structurés, sauvegardes DB.**
+Durcissement livré : notifications temps réel SSE + email SMTP, pièces jointes tickets,
+artefacts Docker de déploiement cible.
 
 Lire en début de session : [`docs/01-architecture-et-plan.md`](docs/01-architecture-et-plan.md)
 (décisions de stack, arborescence, plan par phases, hypothèses retenues).
@@ -50,7 +66,11 @@ Lire en début de session : [`docs/01-architecture-et-plan.md`](docs/01-architec
 
 - **Monorepo** pnpm + Turborepo : `apps/api` (NestJS), `apps/web` (React/Vite), `packages/shared`, `packages/tsconfig`.
 - **Ticket unifié `WorkItem`** avec `type` (EPIC/STORY/SUBTASK/BUG) et hiérarchie `parentId` — pas de tables séparées.
-- **Ordonnancement LexoRank** (`rank` textuel) pour le backlog et le board : un déplacement = un seul UPDATE.
+- **Ordonnancement LexoRank** : un déplacement = un seul UPDATE. **Deux champs distincts** —
+  `rank` (ordre du backlog, entre frères) et `boardRank` (ordre dans la colonne du board).
+  Réordonner une carte sur le board ne doit jamais bousculer la priorisation du backlog.
+- **Le client envoie des voisins, pas un index** (`beforeId` = au-dessus, `afterId` = en dessous) :
+  deux utilisateurs qui déplacent des cartes simultanément ne s'écrasent pas.
 - **Permissions en code** dans `packages/shared/src/permissions.ts` (`can()`), appliquées par le serveur, utilisées par l'UI seulement pour masquer les commandes.
 - **Zod partagé** front/back : un schéma valide le formulaire et le body de la requête.
 - `.env` **unique à la racine**, lu par l'API (`@nestjs/config`) et par Vite (`envDir`).
@@ -75,12 +95,51 @@ Lire en début de session : [`docs/01-architecture-et-plan.md`](docs/01-architec
   Rien d'autre dans la chaîne d'authentification ne bouge.
 - **Invariants** : la plateforme garde au moins un Admin ; un projet garde au moins un Product
   Owner (sans lui, plus personne ne peut approuver de PR).
+- **`GET /users` est réservé à `user:manage` (admin)**. Pour les sélecteurs de personnes
+  (affecter un membre, assigner un ticket), utiliser **`GET /users/directory`** : ouvert à tout
+  utilisateur authentifié, il n'expose que `id`, `name`, `email`, `avatarUrl`. Sans lui, un
+  Product Owner — qui gère les membres mais n'est pas admin — ne pourrait désigner personne.
+- Le token porte un **`jti`** unique : deux JWT signés dans la même seconde seraient sinon
+  identiques (`iat` est en secondes), donc indistinguables dans les journaux.
+
+## Règles des tickets (phase 2)
+
+- **Hiérarchie contrainte par `ALLOWED_PARENT_TYPES`** (dans `@visiora/shared`) :
+  EPIC racine · STORY et BUG sous un EPIC ou racine · SUBTASK obligatoirement sous STORY ou BUG.
+  Le service refuse tout rattachement hors table et détecte les cycles.
+- **Les epics ne vont pas sur le board** : ils ne sont pas du travail réalisable. Le board
+  ne montre que STORY, BUG et SUBTASK.
+- **Un epic n'est pas estimé** : son `rolledUpPoints` est la somme de ses descendants.
+- **Étiquettes et critères d'acceptation se remplacent en bloc** (`labelIds`,
+  `acceptanceCriteria` dans le PATCH) : le client envoie l'état voulu, pas un diff.
+- **L'assigné doit être membre du projet** — sinon 400 `ASSIGNEE_NOT_MEMBER`.
+- **Numérotation `VIS-142`** : `project.lastItemNumber` est incrémenté dans la même
+  transaction que la création, deux créations simultanées ne peuvent pas collisionner.
+- **Suppression = soft delete en cascade** sur toute la descendance.
+- Le glisser-déposer du backlog reprioorise **entre frères uniquement** ; changer de parent
+  se fait explicitement (sélecteur « Rattacher à » à la création).
+
+## Conventions front (phase 1)
+
+- Alias **`@/`** vers `apps/web/src` — pas d'imports relatifs profonds.
+- **Token d'accès en mémoire** (jamais `localStorage`) ; la session se restaure au chargement
+  via `POST /auth/refresh` et le cookie `httpOnly`.
+- **`useProjectPermissions(projectRef)`** interroge `GET /projects/:id/access` et expose `can()`.
+  L'UI ne s'en sert que pour masquer ou désactiver les commandes — l'API reste seule juge.
+- Formulaires : `react-hook-form` + `zodResolver` sur **les schémas de `@visiora/shared`**,
+  ceux-là mêmes que l'API applique.
+- Erreurs : `ApiError` expose `code`, `message` et `details` par champ ; les erreurs métier
+  s'affichent telles quelles (`InlineError`), les erreurs de champ se posent sur le formulaire.
+- **Glisser-déposer : `@dnd-kit`** (`react-beautiful-dnd` n'est plus maintenu). Le déplacement
+  d'une carte est appliqué au cache TanStack Query **avant** la réponse serveur, sinon la carte
+  reviendrait visiblement à sa place le temps de l'aller-retour ; `onError` restaure l'état.
 
 ## Surface API livrée
 
 ```
 POST   /auth/login · /auth/refresh · /auth/logout · /auth/change-password
 GET    /auth/me
+GET    /users/directory                        (annuaire léger, tout authentifié)
 GET    /users · POST /users · GET|PATCH|DELETE /users/:userId
 POST   /users/:userId/reset-password · PATCH /users/me
 GET    /projects · POST /projects
@@ -88,7 +147,43 @@ GET|PATCH|DELETE /projects/:projectId          (DELETE = archivage)
 GET    /projects/:projectId/access             (rôle + permissions effectives)
 GET|POST /projects/:projectId/members
 PATCH|DELETE /projects/:projectId/members/:userId
+
+GET    /projects/:projectId/backlog             (arbre Epic > Story > Sous-tâche)
+GET    /projects/:projectId/board               (5 colonnes, epics exclus)
+POST   /projects/:projectId/work-items
+GET|PATCH|DELETE /projects/:projectId/work-items/:itemId
+POST   /projects/:projectId/work-items/:itemId/move      (board : statut + position)
+POST   /projects/:projectId/work-items/:itemId/reorder   (backlog : position entre frères)
+GET|POST /projects/:projectId/labels
+PATCH|DELETE /projects/:projectId/labels/:labelId
+
+GET|POST /projects/:projectId/sprints
+GET|PATCH /projects/:projectId/sprints/:sprintId
+POST   /projects/:projectId/sprints/:sprintId/close
+PATCH  /projects/:projectId/sprints/:sprintId/retrospective
+GET    /projects/:projectId/roadmap
+
+GET|POST /projects/:projectId/repositories
+PATCH    /projects/:projectId/repositories/:repositoryId
+GET|POST /projects/:projectId/repositories/:repositoryId/branches
+GET|POST /projects/:projectId/pull-requests
+GET      /projects/:projectId/pull-requests/:pullRequestId
+PATCH    /projects/:projectId/pull-requests/:pullRequestId/ready
+PATCH    /projects/:projectId/pull-requests/:pullRequestId/review
+
+GET|POST /projects/:projectId/work-items/:itemId/comments
+DELETE   /projects/:projectId/work-items/:itemId/comments/:commentId
+GET      /projects/:projectId/work-items/:itemId/activity
+GET      /notifications
+PATCH    /notifications/:notificationId/read
+
+GET      /projects/:projectId/dashboard
+GET      /projects/:projectId/calendar
+GET      /search?q=...
 ```
+
+Backlog et board partagent les mêmes filtres en query string (`search`, `type`, `status`,
+`priority`, `assigneeId`, `labelId`, `sprintId`, `isBlocked`, `hideDone`).
 
 `:projectId` accepte l'UUID **ou** la clé courte (`VIS`) ; le guard résout l'identifiant réel
 une fois et l'expose aux contrôleurs via `@ProjectId()`.

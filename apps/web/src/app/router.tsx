@@ -1,151 +1,68 @@
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
-import { AppShell } from '../layouts/AppShell';
-import { ProjectLayout } from '../layouts/ProjectLayout';
-import { PlaceholderPage } from '../components/common/PlaceholderPage';
+import { AppShell } from '@/layouts/AppShell';
+import { ProjectLayout } from '@/layouts/ProjectLayout';
+import { PlaceholderPage } from '@/components/common/PlaceholderPage';
+import { LoginPage } from '@/features/auth/pages/LoginPage';
+import { PortfolioPage } from '@/features/portfolio/pages/PortfolioPage';
+import { ProjectOverviewPage } from '@/features/projects/pages/ProjectOverviewPage';
+import { BacklogPage } from '@/features/backlog/pages/BacklogPage';
+import { BoardPage } from '@/features/board/pages/BoardPage';
+import { CalendarPage } from '@/features/reports/pages/CalendarPage';
+import { DashboardPage } from '@/features/reports/pages/DashboardPage';
+import { RoadmapPage } from '@/features/roadmap/pages/RoadmapPage';
+import { ReposPage } from '@/features/repos/pages/ReposPage';
+import { SettingsPage } from '@/features/settings/pages/SettingsPage';
+import { SprintsPage } from '@/features/sprints/pages/SprintsPage';
+import { UsersPage } from '@/features/admin/pages/UsersPage';
+import { RequireAdmin, RequireAuth } from './guards';
 
 /**
- * Arborescence des routes. Les pages sont pour l'instant des placeholders
- * annotés de leur phase de livraison — la navigation est réelle, pas le contenu.
+ * Les pages livrées sont montées ; celles des phases suivantes restent des
+ * placeholders annotés de leur phase et de leur référence au cahier des charges.
  */
 const router = createBrowserRouter([
+  { path: '/login', element: <LoginPage /> },
   {
-    path: '/login',
-    element: (
-      <PlaceholderPage
-        title="Connexion"
-        phase="Phase 1"
-        description="Formulaire email / mot de passe, JWT et restauration de session."
-        standalone
-      />
-    ),
-  },
-  {
-    path: '/',
-    element: <AppShell />,
+    element: <RequireAuth />,
     children: [
-      { index: true, element: <Navigate to="/portfolio" replace /> },
       {
-        path: 'portfolio',
-        element: (
-          <PlaceholderPage
-            title="Portefeuille de projets"
-            phase="Phase 1"
-            reference="B.2"
-            description="Tous les projets sur un tableau unique, avec avancement, statut et échéances."
-          />
-        ),
-      },
-      {
-        path: 'admin/users',
-        element: (
-          <PlaceholderPage
-            title="Utilisateurs"
-            phase="Phase 1"
-            reference="A.1 · A.2"
-            description="Création, modification, désactivation des comptes et attribution des rôles."
-          />
-        ),
-      },
-      {
-        path: 'projects/:projectKey',
-        element: <ProjectLayout />,
+        path: '/',
+        element: <AppShell />,
         children: [
-          { index: true, element: <Navigate to="overview" replace /> },
+          { index: true, element: <Navigate to="/portfolio" replace /> },
+          { path: 'portfolio', element: <PortfolioPage /> },
+          { path: 'settings', element: <SettingsPage /> },
           {
-            path: 'overview',
-            element: (
-              <PlaceholderPage
-                title="Vue d'ensemble"
-                phase="Phase 1"
-                reference="B.1"
-                description="Informations du projet, membres, dépôts référencés et activité récente."
-              />
-            ),
+            path: 'admin',
+            element: <RequireAdmin />,
+            children: [{ path: 'users', element: <UsersPage /> }],
           },
           {
-            path: 'boards',
-            element: (
-              <PlaceholderPage
-                title="Task Board"
-                phase="Phase 2"
-                reference="D.1"
-                description="Kanban 5 colonnes avec glisser-déposer, filtré sur le sprint actif."
-              />
-            ),
+            path: 'projects/:projectKey',
+            element: <ProjectLayout />,
+            children: [
+              { index: true, element: <Navigate to="overview" replace /> },
+              { path: 'overview', element: <ProjectOverviewPage /> },
+              { path: 'boards', element: <BoardPage /> },
+              { path: 'backlog', element: <BacklogPage /> },
+              { path: 'sprints', element: <SprintsPage /> },
+              { path: 'roadmap', element: <RoadmapPage /> },
+              { path: 'repos', element: <ReposPage /> },
+              { path: 'dashboards', element: <DashboardPage /> },
+              { path: 'calendar', element: <CalendarPage /> },
+            ],
           },
           {
-            path: 'backlog',
+            path: '*',
             element: (
               <PlaceholderPage
-                title="Backlog"
-                phase="Phase 2"
-                reference="C.1 · C.2"
-                description="Liste hiérarchique Epic > Story > Sous-tâche, priorisation par glisser-déposer."
-              />
-            ),
-          },
-          {
-            path: 'sprints',
-            element: (
-              <PlaceholderPage
-                title="Sprints"
-                phase="Phase 3"
-                reference="C.3"
-                description="Création, objectif, affectation depuis le backlog, clôture et rétrospective."
-              />
-            ),
-          },
-          {
-            path: 'roadmap',
-            element: (
-              <PlaceholderPage
-                title="Roadmap"
-                phase="Phase 3"
-                reference="C.4"
-                description="Vue chronologique de la planification des epics."
-              />
-            ),
-          },
-          {
-            path: 'repos',
-            element: (
-              <PlaceholderPage
-                title="Dépôts & Pull Requests"
-                phase="Phase 4"
-                reference="E.1"
-                description="Dépôts Git externes référencés, branches, déclaration et approbation des PR."
-              />
-            ),
-          },
-          {
-            path: 'dashboards',
-            element: (
-              <PlaceholderPage
-                title="Tableaux de bord"
-                phase="Phase 6"
-                reference="F.1 · F.2"
-                description="Burndown, vélocité, indicateurs clés et tâches bloquées."
-              />
-            ),
-          },
-          {
-            path: 'calendar',
-            element: (
-              <PlaceholderPage
-                title="Calendrier"
-                phase="Phase 6"
-                reference="F.3"
-                description="Sprints, échéances et jalons du projet."
+                title="Page introuvable"
+                phase="—"
+                description="Cette adresse n'existe pas."
               />
             ),
           },
         ],
-      },
-      {
-        path: '*',
-        element: (
-          <PlaceholderPage title="Page introuvable" phase="—" description="Cette adresse n'existe pas." />
-        ),
       },
     ],
   },

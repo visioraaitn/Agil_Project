@@ -12,6 +12,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "test:e2e": "pnpm --filter @visiora/web test:e2e",
     "format": "prettier --write \"**/*.{ts,tsx,json,md,css}\"",
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",
@@ -19,7 +20,9 @@
     "db:generate": "pnpm --filter @visiora/api prisma:generate",
     "db:seed": "pnpm --filter @visiora/api prisma:seed",
     "db:studio": "pnpm --filter @visiora/api prisma:studio",
-    "db:reset": "pnpm --filter @visiora/api prisma:reset"
+    "db:reset": "pnpm --filter @visiora/api prisma:reset",
+    "db:backup": "powershell -ExecutionPolicy Bypass -File ./scripts/backup-db.ps1",
+    "db:restore": "powershell -ExecutionPolicy Bypass -File ./scripts/restore-db.ps1"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",

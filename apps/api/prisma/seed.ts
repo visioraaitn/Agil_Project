@@ -144,9 +144,10 @@ async function main(): Promise<void> {
   const nextNumber = (): number => (counter += 1);
 
   const createItem = (
-    data: Omit<Prisma.WorkItemUncheckedCreateInput, 'projectId' | 'number' | 'rank'> & {
-      rankIndex: number;
-    },
+    data: Omit<
+      Prisma.WorkItemUncheckedCreateInput,
+      'projectId' | 'number' | 'rank' | 'boardRank'
+    > & { rankIndex: number },
   ) => {
     const { rankIndex, ...rest } = data;
     return prisma.workItem.create({
@@ -155,6 +156,8 @@ async function main(): Promise<void> {
         projectId: project.id,
         number: nextNumber(),
         rank: rankAt(rankIndex),
+        // Même position de départ sur le board qu'au backlog.
+        boardRank: rankAt(rankIndex),
       },
     });
   };
@@ -211,6 +214,7 @@ async function main(): Promise<void> {
       projectId: project.id,
       number: nextNumber(),
       rank: rankAt(3),
+      boardRank: rankAt(3),
       type: 'SUBTASK',
       title: 'Écran de connexion (React + validation Zod)',
       status: 'DONE',
@@ -228,6 +232,7 @@ async function main(): Promise<void> {
       projectId: project.id,
       number: nextNumber(),
       rank: rankAt(4),
+      boardRank: rankAt(4),
       type: 'SUBTASK',
       title: 'Endpoint POST /auth/login + rotation du refresh token',
       status: 'IN_PROGRESS',

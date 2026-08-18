@@ -355,8 +355,11 @@ model WorkItem {
   /// D.2 · Estimation (échelle Fibonacci côté UI)
   storyPoints Int?
 
-  /// C.1 · Ordre dans le backlog / la colonne (LexoRank : réordonnancement O(1))
+  /// C.1 · Ordre dans le backlog, parmi les frères (LexoRank : réordonnancement O(1))
   rank String
+  /// D.1 · Ordre dans la colonne du board — distinct de `rank` : réordonner une
+  /// carte sur le board ne doit pas bousculer la priorisation du backlog.
+  boardRank String
 
   /// F.2 · Tâches bloquées du dashboard
   isBlocked     Boolean @default(false)
@@ -391,6 +394,7 @@ model WorkItem {
   @@unique([projectId, number])
   @@index([projectId, status])
   @@index([projectId, type, rank])
+  @@index([projectId, status, boardRank])
   @@index([sprintId, status])
   @@index([assigneeId])
   @@index([parentId])

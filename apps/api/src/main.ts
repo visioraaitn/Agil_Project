@@ -7,6 +7,8 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { createRateLimitMiddleware } from './common/middleware/rate-limit.middleware';
+import { requestLoggerMiddleware } from './common/middleware/request-logger.middleware';
 import type { Env } from './config/env';
 
 async function bootstrap(): Promise<void> {
@@ -17,9 +19,13 @@ async function bootstrap(): Promise<void> {
   const prefix = config.get('API_PREFIX', { infer: true });
   const corsOrigin = config.get('CORS_ORIGIN', { infer: true });
   const nodeEnv = config.get('NODE_ENV', { infer: true });
+  const rateLimitWindowMs = config.get('RATE_LIMIT_WINDOW_MS', { infer: true });
+  const rateLimitMax = config.get('RATE_LIMIT_MAX', { infer: true });
 
   app.setGlobalPrefix(prefix);
   app.use(helmet());
+  app.use(createRateLimitMiddleware({ windowMs: rateLimitWindowMs, max: rateLimitMax }));
+  app.use(requestLoggerMiddleware());
   app.use(cookieParser());
   // credentials: le refresh token voyage dans un cookie httpOnly (phase 1).
   app.enableCors({ origin: corsOrigin.split(','), credentials: true });
