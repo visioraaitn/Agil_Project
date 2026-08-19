@@ -12,7 +12,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    strictPort: true,
+    strictPort: false,
   },
   // Le .env est à la racine du monorepo, partagé avec l'API.
   envDir: '../../',

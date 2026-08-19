@@ -13,9 +13,12 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
-import { Input, Select, Textarea } from '@/components/ui/input';
+import { Input, Select } from '@/components/ui/input';
 import { Avatar } from '@/components/common/Avatar';
+import { MarkdownEditor } from '@/components/common/MarkdownEditor';
+import { MarkdownViewer } from '@/components/common/MarkdownViewer';
 import { ErrorState, InlineError, LoadingState } from '@/components/common/StateMessage';
+import { collaborationApi } from '@/features/collaboration/api';
 import { AttachmentsPanel } from '@/features/collaboration/components/AttachmentsPanel';
 import { CommentsPanel } from '@/features/collaboration/components/CommentsPanel';
 import { useProjectMembers, useProjectPermissions } from '@/features/projects/hooks';
@@ -97,6 +100,12 @@ function DetailBody({
     setLabelIds(item.labels.map((label) => label.id));
     setSaveError(null);
   }, [item]);
+
+  const uploadImage = async (file: File): Promise<string> => {
+    const uploaded = await collaborationApi.uploadAttachment(projectRef, item.id, file);
+    const apiBase = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1';
+    return `${apiBase}/projects/${projectRef}/work-items/${item.id}/attachments/${uploaded.id}/download`;
+  };
 
   const save = async () => {
     setSaveError(null);
@@ -253,25 +262,43 @@ function DetailBody({
           </Field>
         </div>
 
-        <Field label="Description — contexte métier (Product Owner)" htmlFor="wi-description">
-          <Textarea
-            id="wi-description"
-            rows={5}
-            value={draft.description}
-            disabled={!canEdit}
-            onChange={(event) => setDraft({ ...draft, description: event.target.value })}
-          />
-        </Field>
+        <div>
+          <label className="text-ink-700 block mb-1 text-xs font-semibold">
+            Description — contexte métier (Product Owner)
+          </label>
+          {canEdit ? (
+            <MarkdownEditor
+              value={draft.description}
+              onChange={(value) => setDraft({ ...draft, description: value })}
+              minHeight="120px"
+              onUploadImage={uploadImage}
+              placeholder="Rédiger la description en Markdown (titres, listes, code, ou coller une capture d’écran Ctrl+V)..."
+            />
+          ) : (
+            <div className="bg-surface-sunken border-border-default rounded border p-3">
+              <MarkdownViewer content={draft.description} />
+            </div>
+          )}
+        </div>
 
-        <Field label="Notes techniques d'implémentation (développeur)" htmlFor="wi-notes">
-          <Textarea
-            id="wi-notes"
-            rows={4}
-            value={draft.technicalNotes}
-            disabled={!canEdit}
-            onChange={(event) => setDraft({ ...draft, technicalNotes: event.target.value })}
-          />
-        </Field>
+        <div>
+          <label className="text-ink-700 block mb-1 text-xs font-semibold">
+            Notes techniques d'implémentation (développeur)
+          </label>
+          {canEdit ? (
+            <MarkdownEditor
+              value={draft.technicalNotes}
+              onChange={(value) => setDraft({ ...draft, technicalNotes: value })}
+              minHeight="100px"
+              onUploadImage={uploadImage}
+              placeholder="Spécifications d'API, requêtes SQL, architecture..."
+            />
+          ) : (
+            <div className="bg-surface-sunken border-border-default rounded border p-3">
+              <MarkdownViewer content={draft.technicalNotes} />
+            </div>
+          )}
+        </div>
 
         <AcceptanceCriteriaEditor criteria={criteria} onChange={setCriteria} readOnly={!canEdit} />
 
@@ -292,9 +319,8 @@ function DetailBody({
                         : [...labelIds, label.id],
                     )
                   }
-                  className={`rounded px-1.5 py-0.5 text-xs font-semibold transition-opacity ${
-                    selected ? 'text-white' : 'text-ink-500 bg-surface-sunken opacity-70'
-                  }`}
+                  className={`rounded px-1.5 py-0.5 text-xs font-semibold transition-opacity ${selected ? 'text-white' : 'text-ink-500 bg-surface-sunken opacity-70'
+                    }`}
                   style={selected ? { backgroundColor: label.color } : undefined}
                 >
                   {label.name}
@@ -347,9 +373,8 @@ function DetailBody({
                   <TypeIcon type={child.type} />
                   <span className="text-ink-400 text-xs">{child.key}</span>
                   <span
-                    className={`flex-1 truncate text-base ${
-                      child.status === WorkItemStatus.DONE ? 'text-ink-400 line-through' : ''
-                    }`}
+                    className={`flex-1 truncate text-base ${child.status === WorkItemStatus.DONE ? 'text-ink-400 line-through' : ''
+                      }`}
                   >
                     {child.title}
                   </span>

@@ -10,5 +10,6 @@ import { NotificationsService } from './notifications.service';
   imports: [PrismaModule, AuthModule],
   controllers: [CollaborationController],
   providers: [CollaborationService, EmailService, NotificationsService],
+  exports: [NotificationsService, CollaborationService, EmailService],
 })
 export class CollaborationModule {}

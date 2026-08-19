@@ -8,6 +8,7 @@ import {
   WorkItemType,
   type BacklogNode,
   type CreateWorkItemInput,
+  type WorkItemStatus,
 } from '@visiora/shared';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
@@ -26,6 +27,8 @@ interface CreateWorkItemDialogProps {
   /** Type et parent présélectionnés (création depuis une ligne du backlog). */
   defaultType?: WorkItemType;
   defaultParentId?: string | null;
+  defaultStatus?: WorkItemStatus;
+  defaultSprintId?: string | null;
 }
 
 export function CreateWorkItemDialog({
@@ -35,6 +38,8 @@ export function CreateWorkItemDialog({
   candidates,
   defaultType = WorkItemType.STORY,
   defaultParentId = null,
+  defaultStatus,
+  defaultSprintId,
 }: CreateWorkItemDialogProps) {
   const createItem = useCreateWorkItem(projectRef);
   const { data: members } = useProjectMembers(projectRef);
@@ -62,6 +67,8 @@ export function CreateWorkItemDialog({
       priority: form.priority,
       storyPoints: form.storyPoints === '' ? null : Number(form.storyPoints),
       assigneeId: form.assigneeId || null,
+      status: defaultStatus,
+      sprintId: defaultSprintId ?? undefined,
     };
 
     try {

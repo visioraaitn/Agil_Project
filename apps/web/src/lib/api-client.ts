@@ -57,19 +57,31 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
   return url.toString();
 }
 
+let refreshPromise: Promise<boolean> | null = null;
+
 async function refreshSession(): Promise<boolean> {
-  try {
-    const response = await fetch(buildUrl('/auth/refresh'), {
-      method: 'POST',
-      credentials: 'include',
-    });
-    if (!response.ok) return false;
-    const data = (await response.json()) as { accessToken: string };
-    setAccessToken(data.accessToken);
-    return true;
-  } catch {
-    return false;
+  if (refreshPromise) {
+    return refreshPromise;
   }
+
+  refreshPromise = (async () => {
+    try {
+      const response = await fetch(buildUrl('/auth/refresh'), {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!response.ok) return false;
+      const data = (await response.json()) as { accessToken: string };
+      setAccessToken(data.accessToken);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
 }
 
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {

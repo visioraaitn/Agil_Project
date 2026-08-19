@@ -4,8 +4,10 @@ import {
   AddProjectMemberInput,
   AuthenticatedUser,
   CreateProjectInput,
+  EntityType,
   GlobalRole,
   ListProjectsQuery,
+  NotificationType,
   Paginated,
   ProjectMemberSummary,
   ProjectRole,
@@ -16,6 +18,7 @@ import {
 } from '@visiora/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ProjectAccessService } from '../access/project-access.service';
+import { EmailService } from '../collaboration/email.service';
 
 const PROJECT_FIELDS = {
   id: true,
@@ -48,6 +51,7 @@ export class ProjectsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: ProjectAccessService,
+    private readonly email: EmailService,
   ) {}
 
   /**
@@ -192,6 +196,14 @@ export class ProjectsService {
       });
     }
 
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { id: true, name: true },
+    });
+    if (!project) {
+      throw new NotFoundException({ code: 'PROJECT_NOT_FOUND', message: 'Ce projet n’existe pas' });
+    }
+
     const member = await this.prisma.projectMember.create({
       data: {
         projectId,
@@ -201,6 +213,24 @@ export class ProjectsService {
       },
       select: MEMBER_FIELDS,
     });
+
+    const title = `Ajouté au projet ${project.name}`;
+    const body = `Vous avez été ajouté au projet ${project.name} en tant que ${member.role}.`;
+
+    await this.prisma.notification.create({
+      data: {
+        userId: member.user.id,
+        projectId,
+        type: NotificationType.PROJECT_MEMBER_ADDED,
+        title,
+        body,
+        entityType: EntityType.PROJECT,
+        entityId: projectId,
+      },
+    });
+
+    await this.email.sendNotification(member.user.email, title, body);
+
     return toMemberSummary(member);
   }
 

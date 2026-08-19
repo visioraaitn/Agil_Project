@@ -4,6 +4,17 @@ import { z } from 'zod';
  * Configuration validée au démarrage : l'application refuse de démarrer si une
  * variable est absente ou mal formée, plutôt que d'échouer à la première requête.
  */
+const booleanFromEnv = (defaultValue = false) =>
+  z.preprocess((val) => {
+    if (typeof val === 'string') {
+      const lower = val.trim().toLowerCase();
+      if (lower === 'true' || lower === '1') return true;
+      if (lower === 'false' || lower === '0' || lower === '') return false;
+    }
+    if (typeof val === 'boolean') return val;
+    return defaultValue;
+  }, z.boolean());
+
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
@@ -25,12 +36,12 @@ export const envSchema = z.object({
   S3_BUCKET: z.string().default('visiora-attachments'),
   S3_ACCESS_KEY: z.string().optional(),
   S3_SECRET_KEY: z.string().optional(),
-  S3_FORCE_PATH_STYLE: z.coerce.boolean().default(true),
+  S3_FORCE_PATH_STYLE: booleanFromEnv(true),
   MAX_UPLOAD_MB: z.coerce.number().int().positive().default(25),
 
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().positive().optional(),
-  SMTP_SECURE: z.coerce.boolean().default(false),
+  SMTP_SECURE: booleanFromEnv(false),
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
   MAIL_FROM: z.string().default('VisioraAI Agile <no-reply@visiora.ai>'),

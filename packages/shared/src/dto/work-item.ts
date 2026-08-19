@@ -28,6 +28,7 @@ export const createWorkItemSchema = z
   .object({
     type: z.nativeEnum(WorkItemType),
     title: z.string().trim().min(3, 'Le titre doit contenir au moins 3 caractères').max(255),
+    status: z.nativeEnum(WorkItemStatus).optional(),
     parentId: uuidSchema.nullable().optional(),
     description: z.string().max(20000).nullable().optional(),
     technicalNotes: z.string().max(20000).nullable().optional(),

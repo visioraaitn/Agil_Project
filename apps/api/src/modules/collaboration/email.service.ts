@@ -1,97 +1,123 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import net from 'node:net';
+import * as dns from 'dns';
+import * as net from 'net';
+import * as nodemailer from 'nodemailer';
+import type { Transporter } from 'nodemailer';
+import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import type { Env } from '../../config/env';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
+  private transporter: Transporter<SMTPTransport.SentMessageInfo> | null = null;
 
   constructor(private readonly config: ConfigService<Env, true>) {}
 
-  async sendNotification(to: string, subject: string, body: string): Promise<boolean> {
+  /**
+   * Obtient ou initialise l'instance réutilisable du transporteur SMTP.
+   * Résout explicitement l'hôte en IPv4 pour éviter tout ENETUNREACH IPv6 sur Windows.
+   * Retourne `null` si la configuration minimale (hôte/port) est absente.
+   */
+  private async getTransporter(): Promise<Transporter<SMTPTransport.SentMessageInfo> | null> {
+    if (this.transporter) {
+      return this.transporter;
+    }
+
     const host = this.config.get('SMTP_HOST', { infer: true });
     const port = this.config.get('SMTP_PORT', { infer: true });
-    if (!host || !port) return false;
+    const secure = this.config.get('SMTP_SECURE', { infer: true });
+    const username = this.config.get('SMTP_USER', { infer: true })?.trim();
+    const password = this.config.get('SMTP_PASSWORD', { infer: true })?.replace(/\s+/g, '');
 
-    const from = this.config.get('MAIL_FROM', { infer: true });
+    if (!host || !port) {
+      this.logger.warn('Configuration SMTP incomplète : SMTP_HOST ou SMTP_PORT manquant.');
+      return null;
+    }
+
+    const isSecure = secure ?? port === 465;
+
+    // Résolution explicite IPv4 (Windows Node.js IPv6 fallback issue)
+    let resolvedHost = host;
+    if (host !== 'localhost' && !net.isIP(host)) {
+      try {
+        const lookup = await dns.promises.lookup(host, { family: 4 });
+        resolvedHost = lookup.address;
+      } catch {
+        resolvedHost = host;
+      }
+    }
+
+    const transportOptions: SMTPTransport.Options = {
+      host: resolvedHost,
+      port,
+      secure: isSecure,
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
+      tls: {
+        servername: host,
+      },
+    };
+
+    // Authentification conditionnelle (compatible serveurs locaux type Mailhog/Mailpit et relais sans auth)
+    if (username && password) {
+      transportOptions.auth = {
+        user: username,
+        pass: password,
+      };
+    }
+
+    this.transporter = nodemailer.createTransport(transportOptions);
+    return this.transporter;
+  }
+
+  /**
+   * Vérifie la validité de la connexion SMTP auprès du serveur distant.
+   */
+  async verifyConnection(): Promise<boolean> {
+    const transporter = await this.getTransporter();
+    if (!transporter) {
+      return false;
+    }
+
     try {
-      await sendSmtp({
-        host,
-        port,
-        from: extractEmail(from),
-        to,
-        message: [
-          `From: ${from}`,
-          `To: ${to}`,
-          `Subject: ${subject}`,
-          'MIME-Version: 1.0',
-          'Content-Type: text/plain; charset=utf-8',
-          '',
-          body,
-        ].join('\r\n'),
-      });
+      await transporter.verify();
+      this.logger.log('Connexion SMTP vérifiée avec succès.');
       return true;
     } catch (error) {
-      this.logger.warn(`Email non envoye a ${to}: ${error instanceof Error ? error.message : String(error)}`);
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Vérification SMTP échouée : ${message}`);
       return false;
     }
   }
-}
 
-function extractEmail(value: string): string {
-  const match = /<([^>]+)>/.exec(value);
-  return match?.[1] ?? value;
-}
+  /**
+   * Envoie un email de notification.
+   * Capture toute exception réseau/SMTP pour éviter de bloquer le flux appelant.
+   */
+  async sendNotification(to: string, subject: string, body: string): Promise<boolean> {
+    const transporter = await this.getTransporter();
+    if (!transporter) {
+      return false;
+    }
 
-function sendSmtp({
-  host,
-  port,
-  from,
-  to,
-  message,
-}: {
-  host: string;
-  port: number;
-  from: string;
-  to: string;
-  message: string;
-}): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const socket = net.createConnection({ host, port });
-    const commands = [
-      'HELO visiora.local',
-      `MAIL FROM:<${from}>`,
-      `RCPT TO:<${to}>`,
-      'DATA',
-      `${message}\r\n.`,
-      'QUIT',
-    ];
-    let index = 0;
-    let done = false;
+    const from = this.config.get('MAIL_FROM', { infer: true }) || 'VisioraAI Agile <no-reply@visiora.ai>';
 
-    const fail = (error: Error) => {
-      if (done) return;
-      done = true;
-      socket.destroy();
-      reject(error);
-    };
+    try {
+      await transporter.sendMail({
+        from,
+        to,
+        subject,
+        text: body,
+      });
 
-    socket.setTimeout(5_000, () => fail(new Error('timeout SMTP')));
-    socket.on('error', fail);
-    socket.on('data', (chunk) => {
-      const response = chunk.toString('utf8');
-      if (/^[45]\d\d/m.test(response)) {
-        fail(new Error(response.trim()));
-        return;
-      }
-      if (index < commands.length) {
-        socket.write(`${commands[index++]}\r\n`);
-      } else if (!done) {
-        done = true;
-        socket.end();
-        resolve();
-      }
-    });
-  });
+      this.logger.log(`Email envoyé avec succès à ${to}`);
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Échec d'envoi de l'email à ${to} : ${message}`);
+      return false;
+    }
+  }
 }

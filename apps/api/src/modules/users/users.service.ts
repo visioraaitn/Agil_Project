@@ -123,6 +123,13 @@ export class UsersService {
   async update(userId: string, input: UpdateUserInput): Promise<UserSummary> {
     await this.assertExists(userId);
 
+    if (
+      (input.globalRole !== undefined && input.globalRole !== GlobalRole.ADMIN) ||
+      input.isActive === false
+    ) {
+      await this.assertNotLastAdmin(userId);
+    }
+
     const user = await this.prisma.user.update({
       where: { id: userId },
       data: {
@@ -192,21 +199,21 @@ export class UsersService {
     if (!exists) throw new NotFoundException({ code: 'USER_NOT_FOUND', message: "Cet utilisateur n'existe pas" });
   }
 
-  /** Garde-fou : la plateforme doit conserver au moins un administrateur. */
+  /** Garde-fou : la plateforme doit conserver au moins un administrateur actif. */
   private async assertNotLastAdmin(userId: string): Promise<void> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { globalRole: true },
+      select: { globalRole: true, isActive: true },
     });
-    if (user?.globalRole !== GlobalRole.ADMIN) return;
+    if (user?.globalRole !== GlobalRole.ADMIN || !user.isActive) return;
 
     const remainingAdmins = await this.prisma.user.count({
-      where: { globalRole: GlobalRole.ADMIN, deletedAt: null, id: { not: userId } },
+      where: { globalRole: GlobalRole.ADMIN, isActive: true, deletedAt: null, id: { not: userId } },
     });
     if (remainingAdmins === 0) {
       throw new BadRequestException({
         code: 'LAST_ADMIN',
-        message: 'La plateforme doit conserver au moins un administrateur',
+        message: 'La plateforme doit conserver au moins un administrateur actif',
       });
     }
   }

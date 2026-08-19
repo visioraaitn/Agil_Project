@@ -44,6 +44,25 @@
   --text-2xl: 1.375rem;
 }
 
+/* Thème sombre haute lisibilité (Dark Mode Natif) */
+.dark {
+  --color-surface: #1e1e1e;
+  --color-surface-muted: #252526;
+  --color-surface-sunken: #181818;
+  --color-border-subtle: #2d2d2d;
+  --color-border-default: #383838;
+  --color-border-strong: #525252;
+
+  --color-ink-900: #f8fafc;
+  --color-ink-700: #e2e8f0;
+  --color-ink-500: #94a3b8;
+  --color-ink-400: #64748b;
+
+  --color-accent-50: #0f1e36;
+  --color-accent-100: #132a4e;
+  --color-accent-200: #1a3d6d;
+}
+
 @layer base {
   html {
     font-size: 16px;
@@ -69,5 +88,19 @@
   }
   .scrollbar-thin::-webkit-scrollbar-track {
     @apply bg-transparent;
+  }
+}
+
+/* Styles pour impression de rapport PDF */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #111827 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
   }
 }

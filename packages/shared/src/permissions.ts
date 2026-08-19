@@ -18,7 +18,10 @@ export const PERMISSIONS = [
   // Projet
   'project:update',
   'project:member:manage',
+  // Dépôts & Branches
   'repo:manage',
+  'branch:create',
+  'branch:delete',
   'label:manage',
 
   // Backlog & tickets
@@ -35,9 +38,13 @@ export const PERMISSIONS = [
   'sprint:close',
   'retro:manage',
 
-  // Pull requests (E.1)
+  // Pull requests (Workflow Azure DevOps)
   'pr:declare',
-  'pr:approve', // approbation ET rejet — réservé au PO
+  'pr:approve',
+  'pr:review',
+  'pr:merge',
+  'pr:close',
+  'pr:comment',
 
   // Collaboration
   'comment:create',
@@ -53,6 +60,8 @@ const PRODUCT_OWNER_PERMISSIONS: readonly Permission[] = [
   'project:update',
   'project:member:manage',
   'repo:manage',
+  'branch:create',
+  'branch:delete',
   'label:manage',
   'workitem:create',
   'workitem:update',
@@ -64,7 +73,12 @@ const PRODUCT_OWNER_PERMISSIONS: readonly Permission[] = [
   'sprint:manage',
   'sprint:close',
   'retro:manage',
+  'pr:declare',
   'pr:approve',
+  'pr:review',
+  'pr:merge',
+  'pr:close',
+  'pr:comment',
   'comment:create',
   'comment:delete:any',
   'report:view',
@@ -72,6 +86,7 @@ const PRODUCT_OWNER_PERMISSIONS: readonly Permission[] = [
 
 const SCRUM_MASTER_PERMISSIONS: readonly Permission[] = [
   'project:member:manage',
+  'branch:create',
   'label:manage',
   'workitem:create',
   'workitem:update',
@@ -83,12 +98,18 @@ const SCRUM_MASTER_PERMISSIONS: readonly Permission[] = [
   'sprint:manage',
   'sprint:close',
   'retro:manage',
+  'pr:declare',
+  'pr:review',
+  'pr:close',
+  'pr:comment',
   'comment:create',
   'comment:delete:any',
   'report:view',
 ];
 
 const DEVELOPER_PERMISSIONS: readonly Permission[] = [
+  'branch:create',
+  'branch:delete',
   'workitem:create',
   'workitem:update',
   'workitem:assign',
@@ -96,6 +117,8 @@ const DEVELOPER_PERMISSIONS: readonly Permission[] = [
   'attachment:manage',
   'retro:manage',
   'pr:declare',
+  'pr:close',
+  'pr:comment',
   'comment:create',
   'report:view',
 ];

@@ -56,7 +56,9 @@ model User {
   sessions          Session[]
   declaredPRs       PullRequest[]           @relation("PullRequestAuthor")
   reviewedPRs       PullRequest[]           @relation("PullRequestReviewer")
+  mergedPRs         PullRequest[]           @relation("PullRequestMerger")
   prEvents          PullRequestEvent[]
+  prComments        PullRequestComment[]
   retroItems        RetrospectiveItem[]
   createdBranches   Branch[]
 
@@ -141,7 +143,7 @@ model ProjectMember {
 }
 
 // ===========================================================================
-// PÉRIMÈTRE TECHNIQUE · Dépôts Git EXTERNES (référencement uniquement)
+// PÉRIMÈTRE TECHNIQUE · Dépôts Git EXTERNES (référencement et cycle de vie)
 // ===========================================================================
 
 enum GitProvider {
@@ -152,14 +154,18 @@ enum GitProvider {
   OTHER
 }
 
-/// Référence vers un dépôt hébergé ailleurs. Aucun code n'est stocké ici.
+/// Référence vers un dépôt hébergé ailleurs.
 model Repository {
   id            String      @id @default(uuid())
   projectId     String
   name          String
+  description   String?
   provider      GitProvider @default(GITHUB)
   url           String
   defaultBranch String      @default("main")
+  isArchived    Boolean     @default(false)
+  /// Compteur séquentiel de PR garanti sans concurrence
+  lastPrNumber  Int         @default(0)
   /// Renseigné seulement si la synchro API est activée (phase 5)
   externalId    String?
   lastSyncedAt  DateTime?
@@ -173,13 +179,15 @@ model Repository {
   @@unique([projectId, name])
 }
 
-/// E.1 · Cache des branches, alimente la liste déroulante et la "création" de branche.
+/// E.1 · Cache des branches, branches protégées et création de branche.
 model Branch {
   id           String   @id @default(uuid())
   repositoryId String
   name         String
   /// true = créée depuis l'app (pas encore vue sur le remote)
   isLocalOnly  Boolean  @default(false)
+  /// true = branche protégée (main, develop, etc. — suppression et auto-approbation interdites)
+  isProtected  Boolean  @default(false)
   createdById  String?
   createdAt    DateTime @default(now())
 
@@ -434,25 +442,30 @@ model Attachment {
 }
 
 // ===========================================================================
-// PARTIE E · WORKFLOW PULL REQUEST
+// PARTIE E · WORKFLOW PULL REQUEST (Modèle Azure DevOps)
 // ===========================================================================
 
 enum PullRequestStatus {
   OPEN // PR déclarée par le développeur
-  READY_FOR_APPROVAL // le dev la marque prête
-  APPROVED // le PO approuve
-  CHANGES_REQUESTED // le PO rejette avec commentaire
-  MERGED
-  CLOSED
+  READY_FOR_APPROVAL // Prête pour révision de l'équipe
+  APPROVED // Approuvée par le reviewer / PO
+  CHANGES_REQUESTED // Demande de modifications avec motif
+  REJECTED // Rejetée définitivement avec motif explicatif
+  MERGED // Fusionnée dans la branche cible
+  CLOSED // Fermée / Abandonnée sans fusion
 }
 
-/// E.1 · Déclaration manuelle par le développeur ; l'app ne fait que référencer.
+/// E.1 · Modèle complet de Pull Request
 model PullRequest {
   id           String            @id @default(uuid())
+  /// Numéro séquentiel (ex. PR #1, PR #2, PR #142 par dépôt)
+  number       Int               @default(1)
   workItemId   String
   repositoryId String
   title        String
-  /// Numéro/URL de la PR sur la plateforme Git externe
+  /// Description riche Markdown
+  description  String?
+  /// Numéro/URL de la PR sur la plateforme Git externe si applicable
   externalNumber Int?
   externalUrl  String?
   status       PullRequestStatus @default(OPEN)
@@ -465,25 +478,49 @@ model PullRequest {
   declaredById String
   reviewedById String?
   reviewedAt   DateTime?
-  /// Motif du dernier rejet (l'historique complet est dans PullRequestEvent)
+  /// Commentaire d'approbation ou résumé de révision
   reviewComment String?
+  /// Motif obligatoire lors d'un rejet définitif
+  rejectionReason String?
+
+  /// Traçabilité de la fusion
+  mergedById   String?
+  mergedAt     DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workItem     WorkItem           @relation(fields: [workItemId], references: [id], onDelete: Cascade)
-  repository   Repository         @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
-  sourceBranch Branch             @relation("PullRequestSource", fields: [sourceBranchId], references: [id])
-  targetBranch Branch?            @relation("PullRequestTarget", fields: [targetBranchId], references: [id])
-  declaredBy   User               @relation("PullRequestAuthor", fields: [declaredById], references: [id])
-  reviewedBy   User?              @relation("PullRequestReviewer", fields: [reviewedById], references: [id])
+  workItem     WorkItem             @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  repository   Repository           @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  sourceBranch Branch               @relation("PullRequestSource", fields: [sourceBranchId], references: [id])
+  targetBranch Branch?              @relation("PullRequestTarget", fields: [targetBranchId], references: [id])
+  declaredBy   User                 @relation("PullRequestAuthor", fields: [declaredById], references: [id])
+  reviewedBy   User?                @relation("PullRequestReviewer", fields: [reviewedById], references: [id])
+  mergedBy     User?                @relation("PullRequestMerger", fields: [mergedById], references: [id])
   events       PullRequestEvent[]
+  comments     PullRequestComment[]
 
+  @@unique([repositoryId, number])
   @@index([workItemId])
-  @@index([status])
+  @@index([repositoryId, status])
 }
 
-/// E.1 · Historique des statuts de la PR
+/// E.2 · Fil de discussion & commentaires sur la Pull Request
+model PullRequestComment {
+  id            String   @id @default(uuid())
+  pullRequestId String
+  authorId      String
+  body          String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  pullRequest PullRequest @relation(fields: [pullRequestId], references: [id], onDelete: Cascade)
+  author      User        @relation(fields: [authorId], references: [id])
+
+  @@index([pullRequestId, createdAt])
+}
+
+/// E.3 · Historique et chronologie d'audit des statuts de la PR
 model PullRequestEvent {
   id            String             @id @default(uuid())
   pullRequestId String
@@ -500,10 +537,10 @@ model PullRequestEvent {
 }
 
 // ===========================================================================
-// PARTIE G · COLLABORATION
+// PARTIE G · COLLABORATION & NOTIFICATIONS
 // ===========================================================================
 
-/// G.2 · Fil de commentaires (réponses imbriquées à un niveau)
+/// G.2 · Fil de commentaires sur tickets (réponses imbriquées à un niveau)
 model Comment {
   id         String   @id @default(uuid())
   workItemId String
@@ -561,16 +598,21 @@ enum NotificationType {
   ITEM_STATUS_CHANGED
   ITEM_COMMENTED
   ITEM_MENTIONED
+  PR_CREATED
   PR_DECLARED
   PR_READY_FOR_APPROVAL
   PR_APPROVED
   PR_CHANGES_REQUESTED
+  PR_REJECTED
+  PR_MERGED
+  PR_CLOSED
+  PR_COMMENTED
   SPRINT_STARTED
   SPRINT_CLOSED
   PROJECT_MEMBER_ADDED
 }
 
-/// G.1 · Notifications in-app (push WebSocket) + trace de l'envoi email
+/// G.1 · Notifications in-app (push WebSocket / SSE) + trace de l'envoi email
 model Notification {
   id         String           @id @default(uuid())
   userId     String

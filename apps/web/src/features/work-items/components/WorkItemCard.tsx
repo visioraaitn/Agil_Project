@@ -1,5 +1,5 @@
 import { forwardRef } from 'react';
-import { AlertTriangle, GripVertical } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import type { WorkItemSummary } from '@visiora/shared';
 import { Avatar } from '@/components/common/Avatar';
 import { cn } from '@/lib/utils';
@@ -14,7 +14,7 @@ interface WorkItemCardProps {
   dragHandleProps?: Record<string, unknown>;
 }
 
-/** D.1 · Carte du Task Board. */
+/** D.1 · Carte du Task Board style Jira (déplaçable depuis toute la surface). */
 export const WorkItemCard = forwardRef<HTMLDivElement, WorkItemCardProps>(function WorkItemCard(
   { item, onOpen, dragging, style, dragHandleProps },
   ref,
@@ -23,31 +23,20 @@ export const WorkItemCard = forwardRef<HTMLDivElement, WorkItemCardProps>(functi
     <div
       ref={ref}
       style={style}
+      {...dragHandleProps}
+      onClick={() => onOpen(item.id)}
       className={cn(
-        'border-border-default bg-surface hover:border-accent-300 rounded border p-2 shadow-sm',
-        item.isBlocked && 'border-l-danger border-l-2',
-        dragging && 'opacity-40',
+        'group border-border-default bg-surface hover:border-accent-400 hover:shadow-md rounded border p-2.5 shadow-sm transition-all duration-150 select-none',
+        dragHandleProps ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
+        item.isBlocked && 'border-l-danger border-l-3',
+        dragging && 'opacity-40 shadow-lg ring-2 ring-accent-500',
       )}
     >
       <div className="flex items-start gap-1.5">
-        {dragHandleProps && (
-          <button
-            type="button"
-            {...dragHandleProps}
-            aria-label={`Déplacer ${item.key}`}
-            className="text-ink-400 hover:text-ink-700 focus-visible:ring-accent-500 mt-0.5 cursor-grab rounded focus-visible:ring-2 focus-visible:outline-none"
-          >
-            <GripVertical className="size-3.5" strokeWidth={1.75} />
-          </button>
-        )}
-        <TypeIcon type={item.type} className="mt-0.5" />
-        <button
-          type="button"
-          onClick={() => onOpen(item.id)}
-          className="text-ink-900 hover:text-accent-700 min-w-0 flex-1 text-left text-base leading-snug hover:underline"
-        >
+        <TypeIcon type={item.type} className="mt-0.5 shrink-0" />
+        <span className="text-ink-900 group-hover:text-accent-700 min-w-0 flex-1 text-left text-base leading-snug font-medium transition-colors">
           {item.title}
-        </button>
+        </span>
         <StoryPoints points={item.storyPoints} />
       </div>
 
@@ -60,11 +49,11 @@ export const WorkItemCard = forwardRef<HTMLDivElement, WorkItemCardProps>(functi
         </p>
       )}
 
-      <div className="mt-1.5 flex items-center gap-2">
+      <div className="mt-2 flex items-center gap-2">
         <span className="text-ink-400 text-xs font-semibold">{item.key}</span>
         <PriorityBadge priority={item.priority} />
         {item.childCount > 0 && (
-          <span className="text-ink-400 text-xs">
+          <span className="text-ink-400 text-xs font-medium">
             {item.doneChildCount}/{item.childCount}
           </span>
         )}
@@ -81,3 +70,4 @@ export const WorkItemCard = forwardRef<HTMLDivElement, WorkItemCardProps>(functi
     </div>
   );
 });
+

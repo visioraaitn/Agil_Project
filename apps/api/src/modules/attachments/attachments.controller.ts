@@ -24,7 +24,7 @@ import { AttachmentsService, UploadedFileLike } from './attachments.service';
 @ApiTags('attachments')
 @Controller('projects/:projectId/work-items/:itemId/attachments')
 export class AttachmentsController {
-  constructor(private readonly attachments: AttachmentsService) {}
+  constructor(private readonly attachments: AttachmentsService) { }
 
   @Get()
   list(

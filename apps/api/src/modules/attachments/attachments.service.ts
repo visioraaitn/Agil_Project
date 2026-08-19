@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   ALLOWED_ATTACHMENT_MIME_TYPES,
@@ -6,10 +6,19 @@ import {
   EntityType,
   MAX_ATTACHMENT_SIZE_MB,
 } from '@visiora/shared';
+import {
+  CreateBucketCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadBucketCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { createReadStream } from 'node:fs';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { Readable } from 'node:stream';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { Env } from '../../config/env';
 import { ATTACHMENT_SELECT, toAttachmentSummary } from './attachment.mapper';
@@ -22,13 +31,52 @@ export interface UploadedFileLike {
 }
 
 @Injectable()
-export class AttachmentsService {
+export class AttachmentsService implements OnModuleInit {
+  private readonly logger = new Logger(AttachmentsService.name);
   private readonly uploadRoot = path.resolve(process.cwd(), 'uploads/attachments');
+  private readonly s3Client: S3Client | null = null;
+  private readonly bucketName: string;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<Env, true>,
-  ) {}
+  ) {
+    this.bucketName = this.config.get('S3_BUCKET', { infer: true }) ?? 'visiora-attachments';
+    const s3Endpoint = this.config.get('S3_ENDPOINT', { infer: true });
+    const accessKey = this.config.get('S3_ACCESS_KEY', { infer: true });
+    const secretKey = this.config.get('S3_SECRET_KEY', { infer: true });
+
+    if (s3Endpoint || accessKey) {
+      this.s3Client = new S3Client({
+        endpoint: s3Endpoint || undefined,
+        region: this.config.get('S3_REGION', { infer: true }) ?? 'us-east-1',
+        credentials:
+          accessKey && secretKey
+            ? {
+                accessKeyId: accessKey,
+                secretAccessKey: secretKey,
+              }
+            : undefined,
+        forcePathStyle: this.config.get('S3_FORCE_PATH_STYLE', { infer: true }),
+      });
+      this.logger.log(`Stockage MinIO / S3 active sur ${s3Endpoint ?? 'AWS'} (bucket: ${this.bucketName})`);
+    }
+  }
+
+  async onModuleInit() {
+    if (this.s3Client) {
+      try {
+        await this.s3Client.send(new HeadBucketCommand({ Bucket: this.bucketName }));
+      } catch {
+        try {
+          await this.s3Client.send(new CreateBucketCommand({ Bucket: this.bucketName }));
+          this.logger.log(`Bucket MinIO "${this.bucketName}" créé avec succès.`);
+        } catch (createErr) {
+          this.logger.warn(`Initialisation bucket MinIO "${this.bucketName}" : ${createErr}`);
+        }
+      }
+    }
+  }
 
   async list(projectId: string, itemId: string): Promise<AttachmentSummary[]> {
     await this.assertWorkItem(projectId, itemId);
@@ -66,6 +114,26 @@ export class AttachmentsService {
     }
 
     const storageKey = `${projectId}/${itemId}/${randomUUID()}-${safeFileName(file.originalname)}`;
+
+    // Stockage dans MinIO / S3 si configuré
+    let storedInS3 = false;
+    if (this.s3Client) {
+      try {
+        await this.s3Client.send(
+          new PutObjectCommand({
+            Bucket: this.bucketName,
+            Key: storageKey,
+            Body: file.buffer,
+            ContentType: file.mimetype,
+          }),
+        );
+        storedInS3 = true;
+      } catch (err) {
+        this.logger.warn(`Echec envoi MinIO, bascule sur disque local : ${(err as Error).message}`);
+      }
+    }
+
+    // Sauvegarde miroir locale (ou fallback si MinIO indisponible)
     const absolutePath = this.storagePath(storageKey);
     await mkdir(path.dirname(absolutePath), { recursive: true });
     await writeFile(absolutePath, file.buffer);
@@ -98,6 +166,10 @@ export class AttachmentsService {
       return created;
     });
 
+    if (storedInS3) {
+      this.logger.log(`Piece jointe ${file.originalname} stockee dans MinIO (cle: ${storageKey})`);
+    }
+
     return toAttachmentSummary(row);
   }
 
@@ -115,6 +187,29 @@ export class AttachmentsService {
     if (!attachment) {
       throw new NotFoundException({ code: 'ATTACHMENT_NOT_FOUND', message: "Cette piece jointe n'existe pas" });
     }
+
+    // Récupération depuis MinIO / S3 si disponible
+    if (this.s3Client) {
+      try {
+        const s3Response = await this.s3Client.send(
+          new GetObjectCommand({
+            Bucket: this.bucketName,
+            Key: attachment.storageKey,
+          }),
+        );
+        if (s3Response.Body) {
+          return {
+            fileName: attachment.fileName,
+            mimeType: attachment.mimeType,
+            stream: s3Response.Body as Readable,
+          };
+        }
+      } catch (err) {
+        this.logger.warn(`Recuperation MinIO echouee, tentative locale : ${(err as Error).message}`);
+      }
+    }
+
+    // Fallback disque local
     return {
       fileName: attachment.fileName,
       mimeType: attachment.mimeType,
@@ -130,6 +225,18 @@ export class AttachmentsService {
     });
     if (!attachment) {
       throw new NotFoundException({ code: 'ATTACHMENT_NOT_FOUND', message: "Cette piece jointe n'existe pas" });
+    }
+
+    // Suppression MinIO
+    if (this.s3Client) {
+      await this.s3Client
+        .send(
+          new DeleteObjectCommand({
+            Bucket: this.bucketName,
+            Key: attachment.storageKey,
+          }),
+        )
+        .catch((err) => this.logger.warn(`Suppression MinIO : ${(err as Error).message}`));
     }
 
     await this.prisma.$transaction([

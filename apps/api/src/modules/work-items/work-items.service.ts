@@ -132,10 +132,12 @@ export class WorkItemsService {
     await this.assertHierarchy(projectId, input.type, input.parentId ?? null);
     await this.assertReferences(projectId, input.assigneeId, input.sprintId, input.labelIds);
 
+    const targetStatus = input.status ?? WorkItemStatus.TODO;
+
     const { rank, boardRank } = await this.ranking.initialRanks(
       projectId,
       input.parentId ?? null,
-      WorkItemStatus.TODO,
+      targetStatus,
     );
 
     /**
@@ -155,6 +157,7 @@ export class WorkItemsService {
           number: project.lastItemNumber,
           type: input.type,
           title: input.title,
+          status: targetStatus,
           description: input.description ?? null,
           technicalNotes: input.technicalNotes ?? null,
           priority: input.priority,
@@ -167,6 +170,7 @@ export class WorkItemsService {
           reporterId,
           rank,
           boardRank,
+          ...(targetStatus === WorkItemStatus.DONE ? { closedAt: new Date() } : {}),
           ...(input.labelIds?.length
             ? { labels: { create: input.labelIds.map((labelId) => ({ labelId })) } }
             : {}),

@@ -62,6 +62,40 @@ export class NotificationsService {
     }
   }
 
+  async notifyPullRequestEvent({
+    userIds,
+    projectId,
+    pullRequestId,
+    type,
+    title,
+    body,
+  }: {
+    userIds: string[];
+    projectId: string;
+    pullRequestId: string;
+    type: NotificationType;
+    title: string;
+    body: string;
+  }): Promise<void> {
+    for (const userId of [...new Set(userIds)].filter(Boolean)) {
+      const row = await this.prisma.notification.create({
+        data: {
+          userId,
+          projectId,
+          type,
+          title,
+          body: body.slice(0, 500),
+          entityType: EntityType.PULL_REQUEST,
+          entityId: pullRequestId,
+        },
+        select: NOTIFICATION_SELECT,
+      });
+      const summary = toNotificationSummary(row);
+      this.subject(userId).next({ type: 'notification', data: summary });
+      void this.sendEmail(userId, summary);
+    }
+  }
+
   private subject(userId: string): Subject<MessageEvent> {
     let subject = this.streams.get(userId);
     if (!subject) {

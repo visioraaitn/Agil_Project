@@ -6,12 +6,15 @@ import {
   FolderKanban,
   LayoutDashboard,
   LogOut,
+  Moon,
   Settings,
   Shield,
+  Sun,
   UserCog,
   Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { EntityType } from '@visiora/shared';
 import { Avatar } from '@/components/common/Avatar';
 import { useAuth } from '@/features/auth/use-auth';
 import {
@@ -20,10 +23,12 @@ import {
   useRealtimeNotifications,
 } from '@/features/collaboration/hooks';
 import { GlobalSearchBox } from '@/features/search/GlobalSearchBox';
+import { useTheme } from '@/lib/use-theme';
 
 /** Barre superieure : recherche globale, notifications, compte. */
 export function Topbar() {
   const { user, logout, isAdmin } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const { projectKey } = useParams<{ projectKey?: string }>();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -78,6 +83,20 @@ export function Topbar() {
 
       <GlobalSearchBox />
 
+      <button
+        type="button"
+        onClick={toggleTheme}
+        className="text-ink-500 hover:text-ink-900 hover:bg-surface-sunken rounded p-1 transition-colors"
+        aria-label={isDark ? 'Passer en mode clair' : 'Passer en mode sombre'}
+        title={isDark ? 'Passer en mode clair' : 'Passer en mode sombre'}
+      >
+        {isDark ? (
+          <Sun className="size-4 text-amber-400" strokeWidth={1.75} />
+        ) : (
+          <Moon className="size-4" strokeWidth={1.75} />
+        )}
+      </button>
+
       <div ref={notificationsRef} className="relative">
         <button
           type="button"
@@ -108,6 +127,11 @@ export function Topbar() {
                     type="button"
                     onClick={() => {
                       if (!notification.isRead) markRead.mutate(notification.id);
+                      setNotificationsOpen(false);
+                      if (notification.entityType === EntityType.PULL_REQUEST && notification.entityId) {
+                        const targetKey = projectKey ?? 'VIS';
+                        navigate(`/projects/${targetKey}/repos?pr=${notification.entityId}`);
+                      }
                     }}
                     className="border-border-subtle hover:bg-surface-sunken flex w-full flex-col border-b px-3 py-2 text-left last:border-b-0"
                   >

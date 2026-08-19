@@ -25,7 +25,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly config: ConfigService<Env, true>,
-  ) {}
+  ) { }
 
   @Public()
   @Post('login')

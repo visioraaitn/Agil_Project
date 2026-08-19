@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { CheckCircle2, Flag, Plus, Save, XCircle } from 'lucide-react';
+import { CheckCircle2, FileText, Flag, Plus, Save, XCircle } from 'lucide-react';
 import type { RetrospectiveItemInput, SprintDetail, SprintStatus } from '@visiora/shared';
 import { LABELS_FR, RetroCategory, SprintStatus as SprintStatusEnum } from '@visiora/shared';
 import { EmptyState, ErrorState, InlineError, LoadingState } from '@/components/common/StateMessage';
@@ -10,6 +10,7 @@ import { Input, Textarea } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { useProjectPermissions } from '@/features/projects/hooks';
 import { StatusPill, StoryPoints } from '@/features/work-items/components/WorkItemChrome';
+import { SprintReportDialog } from '../components/SprintReportDialog';
 import {
   useCloseSprint,
   useCreateSprint,
@@ -119,6 +120,8 @@ function SprintDetailView({
   onCloseSprint: () => void;
   projectRef: string;
 }) {
+  const [reportOpen, setReportOpen] = useState(false);
+
   return (
     <div className="flex flex-col gap-4 p-4">
       <section className="border-border-subtle border-b pb-3">
@@ -130,15 +133,30 @@ function SprintDetailView({
             </p>
           </div>
           <SprintBadge status={sprint.status} />
+          <Button
+            variant="ghost"
+            onClick={() => setReportOpen(true)}
+            className="gap-1.5 text-xs text-ink-700 hover:text-ink-900"
+          >
+            <FileText className="size-3.5 text-accent-600" />
+            <span>Rapport</span>
+          </Button>
           {canClose && sprint.status !== SprintStatusEnum.COMPLETED && (
             <Button variant="secondary" onClick={onCloseSprint} loading={closing}>
               <Flag className="size-3.5" strokeWidth={2} />
-              Cloturer
+              Clôturer
             </Button>
           )}
         </div>
         {sprint.goal && <p className="text-ink-700 mt-2 max-w-3xl text-base">{sprint.goal}</p>}
       </section>
+
+      <SprintReportDialog
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        sprint={sprint}
+        projectName={projectRef}
+      />
 
       <section className="grid grid-cols-4 gap-3">
         <Metric label="Tickets" value={`${sprint.completedItems}/${sprint.totalItems}`} />
