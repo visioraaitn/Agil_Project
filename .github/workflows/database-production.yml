@@ -5,8 +5,8 @@ on:
     branches:
       - main
     paths:
-      - 'apps/api/prisma/schema.prisma'
-      - 'apps/api/prisma/migrations/**'
+      - apps/api/prisma/schema.prisma
+      - apps/api/prisma/migrations/**
 
 permissions:
   contents: read
@@ -16,7 +16,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  prisma-migrate:
+  migrate:
+    name: Apply Prisma migrations
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
@@ -24,6 +25,9 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
     steps:
+      - name: Verify database secret
+        run: test -n "$DATABASE_URL"
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -36,15 +40,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Generate Prisma client
-        working-directory: apps/api
-        run: npx prisma generate
-
-      - name: Apply Prisma migrations
+      - name: Apply migrations
         working-directory: apps/api
         run: npx prisma migrate deploy
