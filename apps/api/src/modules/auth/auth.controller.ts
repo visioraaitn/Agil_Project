@@ -25,7 +25,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly config: ConfigService<Env, true>,
-  ) { }
+  ) {}
 
   @Public()
   @Post('login')
@@ -98,7 +98,7 @@ export class AuthController {
     const prefix = this.config.get('API_PREFIX', { infer: true });
     return {
       httpOnly: true,
-      sameSite: 'lax',
+      sameSite: this.config.get('AUTH_COOKIE_SAME_SITE', { infer: true }),
       secure: this.config.get('NODE_ENV', { infer: true }) === 'production',
       path: `${prefix}/auth`,
     };

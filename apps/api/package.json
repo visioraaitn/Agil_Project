@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "nest start --watch",
     "build": "nest build",
-    "start": "node dist/main.js",
+    "start": "node dist/src/main.js",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "jest --passWithNoTests",
@@ -15,7 +15,9 @@
     "prisma:deploy": "dotenv -e ../../.env -- prisma migrate deploy",
     "prisma:reset": "dotenv -e ../../.env -- prisma migrate reset",
     "prisma:seed": "dotenv -e ../../.env -- prisma db seed",
+    "prisma:seed:demo": "dotenv -e ../../.env -- ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed-demo.ts",
     "prisma:studio": "dotenv -e ../../.env -- prisma studio",
+    "s3:check": "dotenv -e ../../.env -- node scripts/s3-check.js",
     "postinstall": "prisma generate"
   },
   "prisma": {

@@ -25,6 +25,10 @@ import {
 import { GlobalSearchBox } from '@/features/search/GlobalSearchBox';
 import { useTheme } from '@/lib/use-theme';
 
+const API_DOCS_URL =
+  import.meta.env.VITE_API_DOCS_URL ??
+  (import.meta.env.DEV ? 'http://localhost:3000/api/v1/docs' : null);
+
 /** Barre superieure : recherche globale, notifications, compte. */
 export function Topbar() {
   const { user, logout, isAdmin } = useAuth();
@@ -128,7 +132,10 @@ export function Topbar() {
                     onClick={() => {
                       if (!notification.isRead) markRead.mutate(notification.id);
                       setNotificationsOpen(false);
-                      if (notification.entityType === EntityType.PULL_REQUEST && notification.entityId) {
+                      if (
+                        notification.entityType === EntityType.PULL_REQUEST &&
+                        notification.entityId
+                      ) {
                         const targetKey = projectKey ?? 'VIS';
                         navigate(`/projects/${targetKey}/repos?pr=${notification.entityId}`);
                       }
@@ -214,17 +221,19 @@ export function Topbar() {
               </div>
             )}
 
-            <div className="border-border-subtle border-t py-1">
-              <SettingsMenuItem
-                icon={BookOpen}
-                label="Documentation API"
-                description="Swagger local"
-                onClick={() => {
-                  setSettingsOpen(false);
-                  window.open('http://localhost:3000/api/v1/docs', '_blank', 'noopener,noreferrer');
-                }}
-              />
-            </div>
+            {API_DOCS_URL && (
+              <div className="border-border-subtle border-t py-1">
+                <SettingsMenuItem
+                  icon={BookOpen}
+                  label="Documentation API"
+                  description="Swagger"
+                  onClick={() => {
+                    setSettingsOpen(false);
+                    window.open(API_DOCS_URL, '_blank', 'noopener,noreferrer');
+                  }}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>

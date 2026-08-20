@@ -21,6 +21,7 @@
     "db:migrate": "pnpm --filter @visiora/api prisma:migrate",
     "db:generate": "pnpm --filter @visiora/api prisma:generate",
     "db:seed": "pnpm --filter @visiora/api prisma:seed",
+    "db:seed:demo": "pnpm --filter @visiora/api prisma:seed:demo",
     "db:studio": "pnpm --filter @visiora/api prisma:studio",
     "db:reset": "pnpm --filter @visiora/api prisma:reset",
     "db:backup": "powershell -ExecutionPolicy Bypass -File ./scripts/backup-db.ps1",

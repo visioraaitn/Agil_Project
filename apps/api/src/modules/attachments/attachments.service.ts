@@ -1,4 +1,11 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   ALLOWED_ATTACHMENT_MIME_TYPES,
@@ -7,7 +14,6 @@ import {
   MAX_ATTACHMENT_SIZE_MB,
 } from '@visiora/shared';
 import {
-  CreateBucketCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
@@ -36,44 +42,46 @@ export class AttachmentsService implements OnModuleInit {
   private readonly uploadRoot = path.resolve(process.cwd(), 'uploads/attachments');
   private readonly s3Client: S3Client | null = null;
   private readonly bucketName: string;
+  private readonly requireS3: boolean;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<Env, true>,
   ) {
-    this.bucketName = this.config.get('S3_BUCKET', { infer: true }) ?? 'visiora-attachments';
+    this.bucketName = this.config.get('S3_BUCKET', { infer: true }) ?? 'attachments';
+    this.requireS3 = this.config.get('NODE_ENV', { infer: true }) === 'production';
     const s3Endpoint = this.config.get('S3_ENDPOINT', { infer: true });
+    const region = this.config.get('S3_REGION', { infer: true });
     const accessKey = this.config.get('S3_ACCESS_KEY', { infer: true });
     const secretKey = this.config.get('S3_SECRET_KEY', { infer: true });
 
-    if (s3Endpoint || accessKey) {
+    if (s3Endpoint && region && accessKey && secretKey) {
       this.s3Client = new S3Client({
-        endpoint: s3Endpoint || undefined,
-        region: this.config.get('S3_REGION', { infer: true }) ?? 'us-east-1',
-        credentials:
-          accessKey && secretKey
-            ? {
-                accessKeyId: accessKey,
-                secretAccessKey: secretKey,
-              }
-            : undefined,
-        forcePathStyle: this.config.get('S3_FORCE_PATH_STYLE', { infer: true }),
+        endpoint: s3Endpoint,
+        region,
+        credentials: {
+          accessKeyId: accessKey,
+          secretAccessKey: secretKey,
+        },
+        forcePathStyle: true,
       });
-      this.logger.log(`Stockage MinIO / S3 active sur ${s3Endpoint ?? 'AWS'} (bucket: ${this.bucketName})`);
+      this.logger.log(`Stockage S3 compatible actif (bucket: ${this.bucketName})`);
     }
   }
 
-  async onModuleInit() {
+  async onModuleInit(): Promise<void> {
     if (this.s3Client) {
       try {
         await this.s3Client.send(new HeadBucketCommand({ Bucket: this.bucketName }));
-      } catch {
-        try {
-          await this.s3Client.send(new CreateBucketCommand({ Bucket: this.bucketName }));
-          this.logger.log(`Bucket MinIO "${this.bucketName}" créé avec succès.`);
-        } catch (createErr) {
-          this.logger.warn(`Initialisation bucket MinIO "${this.bucketName}" : ${createErr}`);
+      } catch (err) {
+        if (this.requireS3) {
+          throw new Error(`Le bucket S3 "${this.bucketName}" n'est pas accessible.`, {
+            cause: err,
+          });
         }
+        this.logger.warn(
+          `Bucket S3 "${this.bucketName}" non accessible ou non créé : ${(err as Error).message}. Vérifiez la configuration Supabase Storage.`,
+        );
       }
     }
   }
@@ -96,7 +104,10 @@ export class AttachmentsService implements OnModuleInit {
   ): Promise<AttachmentSummary> {
     await this.assertWorkItem(projectId, itemId);
     if (!file) {
-      throw new BadRequestException({ code: 'ATTACHMENT_REQUIRED', message: 'Aucun fichier fourni' });
+      throw new BadRequestException({
+        code: 'ATTACHMENT_REQUIRED',
+        message: 'Aucun fichier fourni',
+      });
     }
 
     const maxBytes = this.config.get('MAX_UPLOAD_MB', { infer: true }) * 1024 * 1024;
@@ -115,7 +126,7 @@ export class AttachmentsService implements OnModuleInit {
 
     const storageKey = `${projectId}/${itemId}/${randomUUID()}-${safeFileName(file.originalname)}`;
 
-    // Stockage dans MinIO / S3 si configuré
+    // Stockage dans le bucket S3 compatible si configuré
     let storedInS3 = false;
     if (this.s3Client) {
       try {
@@ -129,14 +140,25 @@ export class AttachmentsService implements OnModuleInit {
         );
         storedInS3 = true;
       } catch (err) {
-        this.logger.warn(`Echec envoi MinIO, bascule sur disque local : ${(err as Error).message}`);
+        if (this.requireS3) {
+          this.logger.error(`Echec envoi S3 : ${(err as Error).message}`);
+          throw new ServiceUnavailableException({
+            code: 'STORAGE_UNAVAILABLE',
+            message: 'Le stockage des pièces jointes est temporairement indisponible',
+          });
+        }
+        this.logger.warn(`Echec envoi S3, bascule sur disque local : ${(err as Error).message}`);
       }
     }
 
-    // Sauvegarde miroir locale (ou fallback si MinIO indisponible)
-    const absolutePath = this.storagePath(storageKey);
-    await mkdir(path.dirname(absolutePath), { recursive: true });
-    await writeFile(absolutePath, file.buffer);
+    // En développement, le disque reste un fallback pratique. En production,
+    // Supabase Storage est l'unique source afin de ne pas remplir le disque
+    // éphémère du conteneur.
+    if (!this.requireS3) {
+      const absolutePath = this.storagePath(storageKey);
+      await mkdir(path.dirname(absolutePath), { recursive: true });
+      await writeFile(absolutePath, file.buffer);
+    }
 
     const row = await this.prisma.$transaction(async (tx) => {
       const created = await tx.attachment.create({
@@ -167,7 +189,7 @@ export class AttachmentsService implements OnModuleInit {
     });
 
     if (storedInS3) {
-      this.logger.log(`Piece jointe ${file.originalname} stockee dans MinIO (cle: ${storageKey})`);
+      this.logger.log(`Piece jointe ${file.originalname} stockee dans S3 (cle: ${storageKey})`);
     }
 
     return toAttachmentSummary(row);
@@ -185,10 +207,13 @@ export class AttachmentsService implements OnModuleInit {
       },
     });
     if (!attachment) {
-      throw new NotFoundException({ code: 'ATTACHMENT_NOT_FOUND', message: "Cette piece jointe n'existe pas" });
+      throw new NotFoundException({
+        code: 'ATTACHMENT_NOT_FOUND',
+        message: "Cette piece jointe n'existe pas",
+      });
     }
 
-    // Récupération depuis MinIO / S3 si disponible
+    // Récupération depuis le stockage S3 compatible si disponible
     if (this.s3Client) {
       try {
         const s3Response = await this.s3Client.send(
@@ -205,8 +230,22 @@ export class AttachmentsService implements OnModuleInit {
           };
         }
       } catch (err) {
-        this.logger.warn(`Recuperation MinIO echouee, tentative locale : ${(err as Error).message}`);
+        if (this.requireS3) {
+          this.logger.error(`Recuperation S3 echouee : ${(err as Error).message}`);
+          throw new ServiceUnavailableException({
+            code: 'STORAGE_UNAVAILABLE',
+            message: 'Le stockage des pièces jointes est temporairement indisponible',
+          });
+        }
+        this.logger.warn(`Recuperation S3 echouee, tentative locale : ${(err as Error).message}`);
       }
+    }
+
+    if (this.requireS3) {
+      throw new ServiceUnavailableException({
+        code: 'STORAGE_UNAVAILABLE',
+        message: 'Le stockage des pièces jointes est temporairement indisponible',
+      });
     }
 
     // Fallback disque local
@@ -217,26 +256,43 @@ export class AttachmentsService implements OnModuleInit {
     };
   }
 
-  async remove(projectId: string, itemId: string, attachmentId: string, userId: string): Promise<void> {
+  async remove(
+    projectId: string,
+    itemId: string,
+    attachmentId: string,
+    userId: string,
+  ): Promise<void> {
     await this.assertWorkItem(projectId, itemId);
     const attachment = await this.prisma.attachment.findFirst({
       where: { id: attachmentId, workItemId: itemId },
       select: { id: true, storageKey: true },
     });
     if (!attachment) {
-      throw new NotFoundException({ code: 'ATTACHMENT_NOT_FOUND', message: "Cette piece jointe n'existe pas" });
+      throw new NotFoundException({
+        code: 'ATTACHMENT_NOT_FOUND',
+        message: "Cette piece jointe n'existe pas",
+      });
     }
 
-    // Suppression MinIO
+    // Suppression du binaire dans le stockage S3 compatible
     if (this.s3Client) {
-      await this.s3Client
-        .send(
+      try {
+        await this.s3Client.send(
           new DeleteObjectCommand({
             Bucket: this.bucketName,
             Key: attachment.storageKey,
           }),
-        )
-        .catch((err) => this.logger.warn(`Suppression MinIO : ${(err as Error).message}`));
+        );
+      } catch (err) {
+        if (this.requireS3) {
+          this.logger.error(`Suppression S3 : ${(err as Error).message}`);
+          throw new ServiceUnavailableException({
+            code: 'STORAGE_UNAVAILABLE',
+            message: 'Le stockage des pièces jointes est temporairement indisponible',
+          });
+        }
+        this.logger.warn(`Suppression S3 : ${(err as Error).message}`);
+      }
     }
 
     await this.prisma.$transaction([
@@ -262,7 +318,11 @@ export class AttachmentsService implements OnModuleInit {
       where: { id: itemId, projectId, deletedAt: null },
       select: { id: true },
     });
-    if (!item) throw new NotFoundException({ code: 'WORK_ITEM_NOT_FOUND', message: "Ce ticket n'existe pas" });
+    if (!item)
+      throw new NotFoundException({
+        code: 'WORK_ITEM_NOT_FOUND',
+        message: "Ce ticket n'existe pas",
+      });
   }
 
   private storagePath(storageKey: string): string {

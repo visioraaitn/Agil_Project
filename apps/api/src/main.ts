@@ -28,7 +28,10 @@ async function bootstrap(): Promise<void> {
   app.use(requestLoggerMiddleware());
   app.use(cookieParser());
   // credentials: le refresh token voyage dans un cookie httpOnly (phase 1).
-  app.enableCors({ origin: corsOrigin.split(','), credentials: true });
+  app.enableCors({
+    origin: corsOrigin.split(',').map((origin) => origin.trim()),
+    credentials: true,
+  });
   app.useGlobalFilters(new AllExceptionsFilter());
   app.enableShutdownHooks();
 
