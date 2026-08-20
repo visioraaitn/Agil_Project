@@ -102,6 +102,7 @@ export class UsersController {
   @Get(':userId/avatar/:fileName')
   @Public()
   @Header('Cache-Control', 'public, max-age=31536000, immutable')
+  @Header('Cross-Origin-Resource-Policy', 'cross-origin')
   @ApiOperation({ summary: "Affichage public de l'avatar courant d'un utilisateur" })
   async avatar(
     @Param('userId', ParseUUIDPipe) userId: string,
