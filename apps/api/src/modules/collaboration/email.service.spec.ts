@@ -115,11 +115,7 @@ describe('EmailService', () => {
     it('devrait retourner false sans exception si SMTP_HOST ou SMTP_PORT est manquant', async () => {
       mockConfigService.get.mockReturnValue(undefined);
 
-      const result = await service.sendNotification(
-        'recipient@example.com',
-        'Sujet',
-        'Message',
-      );
+      const result = await service.sendNotification('recipient@example.com', 'Sujet', 'Message');
 
       expect(result).toBe(false);
       expect(nodemailer.createTransport).not.toHaveBeenCalled();
@@ -140,11 +136,7 @@ describe('EmailService', () => {
 
       mockTransporter.sendMail.mockRejectedValueOnce(new Error('Connection timeout'));
 
-      const result = await service.sendNotification(
-        'recipient@example.com',
-        'Sujet',
-        'Message',
-      );
+      const result = await service.sendNotification('recipient@example.com', 'Sujet', 'Message');
 
       expect(result).toBe(false);
     });
@@ -183,6 +175,37 @@ describe('EmailService', () => {
       const result = await service.verifyConnection();
 
       expect(result).toBe(false);
+    });
+  });
+
+  describe('sendAccountCreated', () => {
+    it("envoie l'adresse et le mot de passe initial au nouveau compte", async () => {
+      mockConfigService.get.mockImplementation((key: string) => {
+        const config: Record<string, unknown> = {
+          SMTP_HOST: 'smtp.example.com',
+          SMTP_PORT: 587,
+          SMTP_SECURE: false,
+          SMTP_USER: 'user',
+          SMTP_PASSWORD: 'pass',
+          MAIL_FROM: 'no-reply@visiora.ai',
+        };
+        return config[key];
+      });
+
+      const result = await service.sendAccountCreated({
+        email: 'new.user@example.com',
+        name: 'New User',
+        initialPassword: 'Initial1234',
+      });
+
+      expect(result).toBe(true);
+      expect(mockTransporter.sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'new.user@example.com',
+          subject: 'Votre compte VisioraAI Agile',
+          text: expect.stringContaining('Mot de passe initial : Initial1234'),
+        }),
+      );
     });
   });
 });

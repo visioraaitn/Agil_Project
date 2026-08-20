@@ -29,6 +29,12 @@ export const usersApi = {
 
   updateProfile: (input: UpdateProfileInput) => api.patch<UserSummary>('/users/me', input),
 
+  uploadAvatar: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post<UserSummary>('/users/me/avatar', formData);
+  },
+
   update: (userId: string, input: UpdateUserInput) =>
     api.patch<UserSummary>(`/users/${userId}`, input),
 

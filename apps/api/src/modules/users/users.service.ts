@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { hash } from 'bcryptjs';
+import { randomUUID } from 'node:crypto';
 import {
   CreateUserInput,
   GlobalRole,
@@ -15,6 +16,8 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { TokenService } from '../auth/token.service';
 import { PASSWORD_SALT_ROUNDS } from '../auth/auth.service';
+import { EmailService } from '../collaboration/email.service';
+import { ObjectStorageService, type UploadedFileLike } from '../storage/object-storage.service';
 
 const USER_FIELDS = {
   id: true,
@@ -30,11 +33,22 @@ const USER_FIELDS = {
 
 type UserRow = Prisma.UserGetPayload<{ select: typeof USER_FIELDS }>;
 
+const MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024;
+const AVATAR_EXTENSIONS = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+} as const;
+
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tokens: TokenService,
+    private readonly email: EmailService,
+    private readonly storage: ObjectStorageService,
   ) {}
 
   async list(query: ListUsersQuery): Promise<Paginated<UserSummary>> {
@@ -102,7 +116,11 @@ export class UsersService {
       where: { id: userId, deletedAt: null },
       select: USER_FIELDS,
     });
-    if (!user) throw new NotFoundException({ code: 'USER_NOT_FOUND', message: "Cet utilisateur n'existe pas" });
+    if (!user)
+      throw new NotFoundException({
+        code: 'USER_NOT_FOUND',
+        message: "Cet utilisateur n'existe pas",
+      });
     return toUserSummary(user);
   }
 
@@ -117,7 +135,96 @@ export class UsersService {
       },
       select: USER_FIELDS,
     });
+
+    const emailSent = await this.email.sendAccountCreated({
+      email: user.email,
+      name: user.name,
+      initialPassword: input.password,
+    });
+    if (!emailSent) {
+      this.logger.warn(`Compte ${user.id} créé, mais l'email de bienvenue n'a pas été envoyé.`);
+    }
+
     return toUserSummary(user);
+  }
+
+  async uploadOwnAvatar(userId: string, file: UploadedFileLike | undefined): Promise<UserSummary> {
+    if (!file) {
+      throw new BadRequestException({
+        code: 'AVATAR_REQUIRED',
+        message: 'Aucune image fournie',
+      });
+    }
+    if (file.size > MAX_AVATAR_SIZE_BYTES) {
+      throw new BadRequestException({
+        code: 'AVATAR_TOO_LARGE',
+        message: "L'avatar ne doit pas dépasser 5 Mo",
+      });
+    }
+
+    const extension = AVATAR_EXTENSIONS[file.mimetype as keyof typeof AVATAR_EXTENSIONS];
+    if (!extension) {
+      throw new BadRequestException({
+        code: 'AVATAR_TYPE_NOT_ALLOWED',
+        message: 'Utilisez une image JPG, PNG ou WebP',
+      });
+    }
+
+    const currentUser = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { avatarUrl: true },
+    });
+    if (!currentUser) {
+      throw new NotFoundException({
+        code: 'USER_NOT_FOUND',
+        message: "Cet utilisateur n'existe pas",
+      });
+    }
+
+    const fileName = `${randomUUID()}.${extension}`;
+    const storageKey = avatarStorageKey(userId, fileName);
+    await this.storage.putObject(storageKey, file.buffer, file.mimetype);
+
+    let user: UserRow;
+    try {
+      user = await this.prisma.user.update({
+        where: { id: userId },
+        data: { avatarUrl: avatarPublicPath(userId, fileName) },
+        select: USER_FIELDS,
+      });
+    } catch (error) {
+      await this.storage.deleteObject(storageKey).catch(() => undefined);
+      throw error;
+    }
+
+    const previousStorageKey = avatarStorageKeyFromUrl(userId, currentUser.avatarUrl);
+    if (previousStorageKey && previousStorageKey !== storageKey) {
+      await this.storage.deleteObject(previousStorageKey).catch((error: unknown) => {
+        this.logger.warn(`Ancien avatar non supprimé : ${(error as Error).message}`);
+      });
+    }
+
+    return toUserSummary(user);
+  }
+
+  async getAvatar(userId: string, fileName: string) {
+    if (!isAvatarFileName(fileName)) {
+      throw new NotFoundException({ code: 'AVATAR_NOT_FOUND', message: "Cet avatar n'existe pas" });
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { avatarUrl: true },
+    });
+    if (user?.avatarUrl !== avatarPublicPath(userId, fileName)) {
+      throw new NotFoundException({ code: 'AVATAR_NOT_FOUND', message: "Cet avatar n'existe pas" });
+    }
+
+    const storedObject = await this.storage.getObject(avatarStorageKey(userId, fileName));
+    return {
+      stream: storedObject.stream,
+      mimeType: storedObject.contentType ?? avatarMimeType(fileName),
+    };
   }
 
   async update(userId: string, input: UpdateUserInput): Promise<UserSummary> {
@@ -196,7 +303,11 @@ export class UsersService {
       where: { id: userId, deletedAt: null },
       select: { id: true },
     });
-    if (!exists) throw new NotFoundException({ code: 'USER_NOT_FOUND', message: "Cet utilisateur n'existe pas" });
+    if (!exists)
+      throw new NotFoundException({
+        code: 'USER_NOT_FOUND',
+        message: "Cet utilisateur n'existe pas",
+      });
   }
 
   /** Garde-fou : la plateforme doit conserver au moins un administrateur actif. */
@@ -231,4 +342,32 @@ function toUserSummary(user: UserRow): UserSummary {
     lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
     createdAt: user.createdAt.toISOString(),
   };
+}
+
+function avatarPublicPath(userId: string, fileName: string): string {
+  return `/users/${userId}/avatar/${fileName}`;
+}
+
+function avatarStorageKey(userId: string, fileName: string): string {
+  return `avatars/${userId}/${fileName}`;
+}
+
+function avatarStorageKeyFromUrl(userId: string, avatarUrl: string | null): string | null {
+  if (!avatarUrl) return null;
+  const prefix = `/users/${userId}/avatar/`;
+  if (!avatarUrl.startsWith(prefix)) return null;
+  const fileName = avatarUrl.slice(prefix.length);
+  return isAvatarFileName(fileName) ? avatarStorageKey(userId, fileName) : null;
+}
+
+function isAvatarFileName(fileName: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(jpg|png|webp)$/i.test(
+    fileName,
+  );
+}
+
+function avatarMimeType(fileName: string): string {
+  if (fileName.endsWith('.png')) return 'image/png';
+  if (fileName.endsWith('.webp')) return 'image/webp';
+  return 'image/jpeg';
 }
