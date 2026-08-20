@@ -1,9 +1,15 @@
 node_modules
+**/node_modules
 dist
+**/dist
 .turbo
+**/.turbo
 coverage
+**/coverage
 playwright-report
+**/playwright-report
 test-results
+**/test-results
 backups
 uploads
 .env

@@ -81,7 +81,7 @@ export function MarkdownEditor({
             const imageMarkdown = `\n\n![Capture d'écran](${imageUrl})\n\n`;
             const nextValue = value.substring(0, start) + imageMarkdown + value.substring(end);
             onChange(nextValue);
-            setNotification('Capture d’écran enregistrée dans MinIO avec succès !');
+            setNotification('Capture d’écran enregistrée dans le stockage objet avec succès !');
             setTimeout(() => setNotification(null), 3000);
           } catch {
             // fallback local base64 preview
@@ -190,7 +190,7 @@ export function MarkdownEditor({
       {uploading && (
         <div className="bg-blue-50 text-blue-800 border-b border-blue-200 px-3 py-1 text-xs font-medium flex items-center gap-2 animate-in fade-in">
           <Loader2 className="size-3.5 animate-spin text-blue-600" />
-          <span>Téléversement de la capture d’écran vers MinIO...</span>
+          <span>Téléversement de la capture d’écran vers le stockage objet...</span>
         </div>
       )}
 
