@@ -19,12 +19,13 @@ import type { AttachmentSummary, AuthenticatedUser } from '@visiora/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ProjectId } from '../../common/decorators/project-id.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
-import { AttachmentsService, UploadedFileLike } from './attachments.service';
+import type { UploadedFileLike } from '../storage/object-storage.service';
+import { AttachmentsService } from './attachments.service';
 
 @ApiTags('attachments')
 @Controller('projects/:projectId/work-items/:itemId/attachments')
 export class AttachmentsController {
-  constructor(private readonly attachments: AttachmentsService) { }
+  constructor(private readonly attachments: AttachmentsService) {}
 
   @Get()
   list(
@@ -65,7 +66,10 @@ export class AttachmentsController {
   ): Promise<StreamableFile> {
     const file = await this.attachments.getDownload(projectId, itemId, attachmentId);
     response.setHeader('Content-Type', file.mimeType);
-    response.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.fileName)}"`);
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${encodeURIComponent(file.fileName)}"`,
+    );
     return new StreamableFile(file.stream);
   }
 

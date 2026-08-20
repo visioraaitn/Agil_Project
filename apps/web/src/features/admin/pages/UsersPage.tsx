@@ -4,10 +4,16 @@ import { GlobalRole, type UserSummary } from '@visiora/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar } from '@/components/common/Avatar';
-import { EmptyState, ErrorState, InlineError, LoadingState } from '@/components/common/StateMessage';
+import {
+  EmptyState,
+  ErrorState,
+  InlineError,
+  LoadingState,
+} from '@/components/common/StateMessage';
 import { useAuth } from '@/features/auth/use-auth';
+import { ResetPasswordDialog } from '../components/ResetPasswordDialog';
 import { UserFormDialog } from '../components/UserFormDialog';
-import { useDeleteUser, useResetPassword, useUsers } from '../hooks';
+import { useDeleteUser, useUsers } from '../hooks';
 
 function formatDate(iso: string | null): string {
   if (!iso) return 'jamais';
@@ -23,12 +29,16 @@ export function UsersPage() {
   const { user: currentUser } = useAuth();
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<UserSummary | null>(null);
+  const [resetting, setResetting] = useState<UserSummary | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [actionError, setActionError] = useState<unknown>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
-  const { data, isLoading, error } = useUsers({ search: search.trim() || undefined, pageSize: 100 });
+  const { data, isLoading, error } = useUsers({
+    search: search.trim() || undefined,
+    pageSize: 100,
+  });
   const deleteUser = useDeleteUser();
-  const resetPassword = useResetPassword();
 
   const openCreate = () => {
     setEditing(null);
@@ -41,7 +51,8 @@ export function UsersPage() {
   };
 
   const remove = async (user: UserSummary) => {
-    if (!window.confirm(`Supprimer le compte de ${user.name} ? Son historique est conservé.`)) return;
+    if (!window.confirm(`Supprimer le compte de ${user.name} ? Son historique est conservé.`))
+      return;
     setActionError(null);
     try {
       await deleteUser.mutateAsync(user.id);
@@ -50,18 +61,10 @@ export function UsersPage() {
     }
   };
 
-  const reset = async (user: UserSummary) => {
-    const newPassword = window.prompt(
-      `Nouveau mot de passe pour ${user.name} (10 caractères minimum, majuscule, minuscule et chiffre) :`,
-    );
-    if (!newPassword) return;
+  const reset = (user: UserSummary) => {
     setActionError(null);
-    try {
-      await resetPassword.mutateAsync({ userId: user.id, newPassword });
-      window.alert('Mot de passe réinitialisé. Toutes ses sessions ont été fermées.');
-    } catch (mutationError) {
-      setActionError(mutationError);
-    }
+    setActionMessage(null);
+    setResetting(user);
   };
 
   return (
@@ -91,6 +94,11 @@ export function UsersPage() {
       {actionError ? (
         <div className="px-4 pt-2">
           <InlineError error={actionError} />
+        </div>
+      ) : null}
+      {actionMessage ? (
+        <div className="px-4 pt-2">
+          <p className="bg-green-50 text-success rounded px-2 py-1.5 text-base">{actionMessage}</p>
         </div>
       ) : null}
 
@@ -181,6 +189,15 @@ export function UsersPage() {
       </div>
 
       <UserFormDialog open={dialogOpen} onClose={() => setDialogOpen(false)} user={editing} />
+      <ResetPasswordDialog
+        user={resetting}
+        onClose={() => setResetting(null)}
+        onSuccess={(user) =>
+          setActionMessage(
+            `Mot de passe de ${user.name} réinitialisé. Toutes ses sessions ont été fermées.`,
+          )
+        }
+      />
     </div>
   );
 }

@@ -7,6 +7,12 @@ import type { Transporter } from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import type { Env } from '../../config/env';
 
+interface AccountCreatedEmail {
+  email: string;
+  name: string;
+  initialPassword: string;
+}
+
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
@@ -102,7 +108,8 @@ export class EmailService {
       return false;
     }
 
-    const from = this.config.get('MAIL_FROM', { infer: true }) || 'VisioraAI Agile <no-reply@visiora.ai>';
+    const from =
+      this.config.get('MAIL_FROM', { infer: true }) || 'VisioraAI Agile <no-reply@visiora.ai>';
 
     try {
       await transporter.sendMail({
@@ -119,5 +126,20 @@ export class EmailService {
       this.logger.error(`Échec d'envoi de l'email à ${to} : ${message}`);
       return false;
     }
+  }
+
+  async sendAccountCreated(account: AccountCreatedEmail): Promise<boolean> {
+    const body = [
+      `Bonjour ${account.name},`,
+      '',
+      'Votre compte VisioraAI Agile a été créé.',
+      `Email : ${account.email}`,
+      `Mot de passe initial : ${account.initialPassword}`,
+      '',
+      'Connectez-vous puis changez immédiatement ce mot de passe depuis Paramètres > Sécurité.',
+      "Si vous n'attendiez pas la création de ce compte, contactez votre administrateur.",
+    ].join('\n');
+
+    return this.sendNotification(account.email, 'Votre compte VisioraAI Agile', body);
   }
 }

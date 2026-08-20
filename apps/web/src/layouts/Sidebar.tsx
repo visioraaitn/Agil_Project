@@ -37,7 +37,9 @@ const PROJECT_NAV: NavItem[] = [
 const linkClass = ({ isActive }: { isActive: boolean }): string =>
   cn(
     'flex items-center gap-2 rounded px-2 py-1 text-base transition-colors',
-    isActive ? 'bg-accent-50 text-accent-700 font-semibold' : 'text-ink-700 hover:bg-surface-sunken',
+    isActive
+      ? 'bg-accent-50 text-accent-700 font-semibold'
+      : 'text-ink-700 hover:bg-surface-sunken',
   );
 
 /** Navigation latérale : sélecteur de projet en haut, sections en dessous. */
@@ -143,7 +145,11 @@ export function Sidebar() {
           <>
             <p className="text-ink-400 px-2 pt-3 pb-1 text-xs font-semibold uppercase">Projet</p>
             {PROJECT_NAV.map((item) => (
-              <NavLink key={item.to} to={`/projects/${projectKey}/${item.to}`} className={linkClass}>
+              <NavLink
+                key={item.to}
+                to={`/projects/${projectKey}/${item.to}`}
+                className={linkClass}
+              >
                 <item.icon className="size-4 shrink-0" strokeWidth={1.75} />
                 {item.label}
               </NavLink>
@@ -163,10 +169,6 @@ export function Sidebar() {
           </>
         )}
       </div>
-
-      <p className="text-ink-400 border-border-default border-t px-2.5 py-1.5 text-xs">
-        v0.1.0 · phase 7
-      </p>
     </nav>
   );
 }

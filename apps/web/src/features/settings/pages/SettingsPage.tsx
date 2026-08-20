@@ -1,5 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Bell, KeyRound, LayoutDashboard, Palette, Shield, UserCog, Users } from 'lucide-react';
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import {
+  Bell,
+  ImageUp,
+  KeyRound,
+  LayoutDashboard,
+  Palette,
+  Shield,
+  UserCog,
+  Users,
+} from 'lucide-react';
 import { GlobalRole } from '@visiora/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -33,13 +42,14 @@ export function SettingsPage() {
     name: user?.name ?? '',
     email: user?.email ?? '',
     jobTitle: '',
-    avatarUrl: user?.avatarUrl ?? '',
   });
   const [passwords, setPasswords] = useState({ currentPassword: '', newPassword: '' });
   const [profileError, setProfileError] = useState<unknown>(null);
   const [passwordError, setPasswordError] = useState<unknown>(null);
   const [profileSaved, setProfileSaved] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
+  const [avatarError, setAvatarError] = useState<unknown>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const [passwordSaving, setPasswordSaving] = useState(false);
   const activeTab = searchParams.get('tab') === 'security' ? 'security' : 'profile';
 
@@ -48,7 +58,6 @@ export function SettingsPage() {
       name: user?.name ?? '',
       email: user?.email ?? '',
       jobTitle: '',
-      avatarUrl: user?.avatarUrl ?? '',
     });
   }, [user]);
 
@@ -70,7 +79,6 @@ export function SettingsPage() {
         name: profile.name,
         email: profile.email,
         jobTitle: profile.jobTitle || null,
-        avatarUrl: profile.avatarUrl || null,
       });
       await refreshUser();
       setProfileSaved(true);
@@ -78,6 +86,24 @@ export function SettingsPage() {
       setProfileError(error);
     } finally {
       setProfileSaving(false);
+    }
+  };
+
+  const uploadAvatar = async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    setAvatarUploading(true);
+    setAvatarError(null);
+    try {
+      await usersApi.uploadAvatar(file);
+      await refreshUser();
+    } catch (error) {
+      setAvatarError(error);
+    } finally {
+      setAvatarUploading(false);
+      input.value = '';
     }
   };
 
@@ -199,15 +225,18 @@ export function SettingsPage() {
                     placeholder="Ex. Developpeur, Stagiaire, Product Owner"
                   />
                 </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-ink-700 text-sm font-semibold">Avatar URL</span>
+                <label className="flex flex-col gap-1 md:col-span-2">
+                  <span className="text-ink-700 flex items-center gap-1 text-sm font-semibold">
+                    <ImageUp className="size-4" strokeWidth={1.75} />
+                    Photo de profil
+                  </span>
                   <Input
-                    value={profile.avatarUrl}
-                    onChange={(event) =>
-                      setProfile((current) => ({ ...current, avatarUrl: event.target.value }))
-                    }
-                    placeholder="https://..."
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={(event) => void uploadAvatar(event)}
+                    disabled={avatarUploading}
                   />
+                  <span className="text-ink-400 text-xs">JPG, PNG ou WebP, 5 Mo maximum.</span>
                 </label>
               </div>
               <div className="border-border-subtle flex items-center gap-3 border-t px-3 py-3">
@@ -218,6 +247,10 @@ export function SettingsPage() {
                   <span className="text-success text-sm font-semibold">Profil mis a jour</span>
                 )}
                 <InlineError error={profileError} />
+                {avatarUploading && (
+                  <span className="text-ink-400 text-sm">Envoi de l'avatar…</span>
+                )}
+                <InlineError error={avatarError} />
               </div>
             </section>
 
@@ -380,7 +413,9 @@ function SettingsNavItem({
       type="button"
       onClick={onClick}
       className={`flex w-full items-center gap-2 px-3 py-2 text-left text-base ${
-        active ? 'bg-accent-50 text-accent-700 font-semibold' : 'text-ink-700 hover:bg-surface-sunken'
+        active
+          ? 'bg-accent-50 text-accent-700 font-semibold'
+          : 'text-ink-700 hover:bg-surface-sunken'
       }`}
     >
       <Icon className="size-4" strokeWidth={1.75} />
