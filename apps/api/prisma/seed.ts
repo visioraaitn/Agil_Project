@@ -24,7 +24,8 @@ async function ensureAdminSeed(): Promise<void> {
     update: {
       name: 'Product Owner',
       jobTitle: 'PRODUCT_OWNER',
-      globalRole: GlobalRole.PRODUCT_OWNER,
+      globalRole: GlobalRole.ADMIN,
+      isSuperAdmin: true,
       passwordHash,
       isActive: true,
       deletedAt: null,
@@ -34,7 +35,8 @@ async function ensureAdminSeed(): Promise<void> {
       name: 'Product Owner',
       jobTitle: 'PRODUCT_OWNER',
       passwordHash,
-      globalRole: GlobalRole.PRODUCT_OWNER,
+      globalRole: GlobalRole.ADMIN,
+      isSuperAdmin: true,
       isActive: true,
     },
   });

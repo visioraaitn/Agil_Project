@@ -145,23 +145,17 @@ export interface AccessContext {
   projectRole?: ProjectRole | null;
 }
 
-/**
- * Le Product Owner plateforme gouverne les comptes et tous les projets.
- * L'administrateur conserve les droits techniques/projet, sans pouvoir gérer
- * les comptes ni attribuer les rôles plateforme ou projet.
- */
+/** Un administrateur dispose des droits plateforme. La gestion d'un compte
+ * ADMIN est contrôlée séparément par `isSuperAdmin` dans le service users. */
 export function can(ctx: AccessContext, permission: Permission): boolean {
-  if (ctx.globalRole === GlobalRole.PRODUCT_OWNER) return true;
-  if (ctx.globalRole === GlobalRole.ADMIN) {
-    return permission !== 'user:manage' && permission !== 'project:member:manage';
-  }
+  if (ctx.globalRole === GlobalRole.ADMIN) return true;
   if (PLATFORM_PERMISSIONS.includes(permission)) return false;
   if (!ctx.projectRole) return false;
   return ROLE_PERMISSIONS[ctx.projectRole].includes(permission);
 }
 
 export function isPlatformAdministrator(role: GlobalRole): boolean {
-  return role === GlobalRole.PRODUCT_OWNER || role === GlobalRole.ADMIN;
+  return role === GlobalRole.ADMIN;
 }
 
 export function canAll(ctx: AccessContext, permissions: readonly Permission[]): boolean {

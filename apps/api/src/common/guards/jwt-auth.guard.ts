@@ -47,6 +47,7 @@ export class JwtAuthGuard implements CanActivate {
         jobTitle: true,
         avatarUrl: true,
         globalRole: true,
+        isSuperAdmin: true,
         isActive: true,
         deletedAt: true,
       },

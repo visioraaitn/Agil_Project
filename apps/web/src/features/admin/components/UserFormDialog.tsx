@@ -17,6 +17,7 @@ import { Input, Select } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { InlineError } from '@/components/common/StateMessage';
 import { ApiError } from '@/lib/api-client';
+import { useAuth } from '@/features/auth/use-auth';
 import { useCreateUser, useUpdateUser } from '../hooks';
 
 interface UserFormDialogProps {
@@ -27,6 +28,7 @@ interface UserFormDialogProps {
 }
 
 export function UserFormDialog({ open, onClose, user }: UserFormDialogProps) {
+  const { canManageAdmins } = useAuth();
   const isEdit = user !== null;
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
@@ -131,18 +133,19 @@ export function UserFormDialog({ open, onClose, user }: UserFormDialogProps) {
           </Field>
         )}
 
-        <Field
-          label="Rôle plateforme"
-          htmlFor="globalRole"
-          error={fieldErrors.globalRole?.message}
-          hint="Seul le Product Owner gère les comptes et attribue les rôles plateforme. Les rôles agiles restent définis projet par projet."
-        >
-          <Select id="globalRole" {...register('globalRole')}>
-            <option value={GlobalRole.MEMBER}>Membre</option>
-            <option value={GlobalRole.ADMIN}>Administrateur</option>
-            <option value={GlobalRole.PRODUCT_OWNER}>Product Owner</option>
-          </Select>
-        </Field>
+        {canManageAdmins && (
+          <Field
+            label="Rôle plateforme"
+            htmlFor="globalRole"
+            error={fieldErrors.globalRole?.message}
+            hint="Seul le super administrateur peut créer, promouvoir ou rétrograder un administrateur."
+          >
+            <Select id="globalRole" {...register('globalRole')}>
+              <option value={GlobalRole.MEMBER}>Membre</option>
+              <option value={GlobalRole.ADMIN}>Administrateur</option>
+            </Select>
+          </Field>
+        )}
 
         {isEdit && (
           <label className="text-ink-700 flex items-center gap-2 text-base">

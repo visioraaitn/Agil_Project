@@ -26,7 +26,7 @@ function formatDate(iso: string | null): string {
 
 /** A.1 · Gestion des utilisateurs + A.2 · Attribution du rôle plateforme. */
 export function UsersPage() {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, canManageAdmins } = useAuth();
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<UserSummary | null>(null);
   const [resetting, setResetting] = useState<UserSummary | null>(null);
@@ -120,73 +120,82 @@ export function UsersPage() {
               </tr>
             </thead>
             <tbody>
-              {data.items.map((user) => (
-                <tr key={user.id} className="border-border-subtle hover:bg-surface-muted border-b">
-                  <td className="px-4 py-1.5">
-                    <div className="flex items-center gap-2">
-                      <Avatar name={user.name} avatarUrl={user.avatarUrl} />
-                      <div className="min-w-0">
-                        <p className="text-ink-900 truncate font-semibold">
-                          {user.name}
-                          {user.id === currentUser?.id && (
-                            <span className="text-ink-400 ml-1 font-normal">(vous)</span>
-                          )}
-                        </p>
-                        <p className="text-ink-400 truncate text-sm">{user.email}</p>
+              {data.items.map((user) => {
+                const adminLocked = user.globalRole === GlobalRole.ADMIN && !canManageAdmins;
+                return (
+                  <tr
+                    key={user.id}
+                    className="border-border-subtle hover:bg-surface-muted border-b"
+                  >
+                    <td className="px-4 py-1.5">
+                      <div className="flex items-center gap-2">
+                        <Avatar name={user.name} avatarUrl={user.avatarUrl} />
+                        <div className="min-w-0">
+                          <p className="text-ink-900 truncate font-semibold">
+                            {user.name}
+                            {user.id === currentUser?.id && (
+                              <span className="text-ink-400 ml-1 font-normal">(vous)</span>
+                            )}
+                          </p>
+                          <p className="text-ink-400 truncate text-sm">{user.email}</p>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="text-ink-500 px-3 py-1.5">
-                    {user.jobTitle ? LABELS_FR.userFunction[user.jobTitle] : '—'}
-                  </td>
-                  <td className="px-3 py-1.5">
-                    {user.globalRole === GlobalRole.PRODUCT_OWNER ? (
-                      <Badge tone="accent">Product Owner</Badge>
-                    ) : user.globalRole === GlobalRole.ADMIN ? (
-                      <Badge tone="accent">Administrateur</Badge>
-                    ) : (
-                      <Badge>Membre</Badge>
-                    )}
-                  </td>
-                  <td className="px-3 py-1.5">
-                    {user.isActive ? (
-                      <Badge tone="success">Actif</Badge>
-                    ) : (
-                      <Badge tone="danger">Désactivé</Badge>
-                    )}
-                  </td>
-                  <td className="text-ink-500 px-3 py-1.5">{formatDate(user.lastLoginAt)}</td>
-                  <td className="px-3 py-1.5">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={`Modifier ${user.name}`}
-                        onClick={() => openEdit(user)}
-                      >
-                        <Pencil className="size-3.5" strokeWidth={1.75} />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={`Réinitialiser le mot de passe de ${user.name}`}
-                        onClick={() => reset(user)}
-                      >
-                        <KeyRound className="size-3.5" strokeWidth={1.75} />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={`Supprimer ${user.name}`}
-                        disabled={user.id === currentUser?.id}
-                        onClick={() => remove(user)}
-                      >
-                        <Trash2 className="text-danger size-3.5" strokeWidth={1.75} />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="text-ink-500 px-3 py-1.5">
+                      {user.jobTitle ? LABELS_FR.userFunction[user.jobTitle] : '—'}
+                    </td>
+                    <td className="px-3 py-1.5">
+                      {user.globalRole === GlobalRole.ADMIN ? (
+                        <div className="flex flex-wrap gap-1">
+                          <Badge tone="accent">Administrateur</Badge>
+                          {user.isSuperAdmin && <Badge tone="success">Super administrateur</Badge>}
+                        </div>
+                      ) : (
+                        <Badge>Membre</Badge>
+                      )}
+                    </td>
+                    <td className="px-3 py-1.5">
+                      {user.isActive ? (
+                        <Badge tone="success">Actif</Badge>
+                      ) : (
+                        <Badge tone="danger">Désactivé</Badge>
+                      )}
+                    </td>
+                    <td className="text-ink-500 px-3 py-1.5">{formatDate(user.lastLoginAt)}</td>
+                    <td className="px-3 py-1.5">
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Modifier ${user.name}`}
+                          disabled={adminLocked}
+                          onClick={() => openEdit(user)}
+                        >
+                          <Pencil className="size-3.5" strokeWidth={1.75} />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Réinitialiser le mot de passe de ${user.name}`}
+                          disabled={adminLocked}
+                          onClick={() => reset(user)}
+                        >
+                          <KeyRound className="size-3.5" strokeWidth={1.75} />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Supprimer ${user.name}`}
+                          disabled={user.id === currentUser?.id || adminLocked}
+                          onClick={() => remove(user)}
+                        >
+                          <Trash2 className="text-danger size-3.5" strokeWidth={1.75} />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

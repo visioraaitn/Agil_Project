@@ -1,9 +1,16 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { hash } from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
 import {
   CreateUserInput,
+  AuthenticatedUser,
   EntityType,
   GlobalRole,
   ListUsersQuery,
@@ -29,6 +36,7 @@ const USER_FIELDS = {
   jobTitle: true,
   avatarUrl: true,
   globalRole: true,
+  isSuperAdmin: true,
   isActive: true,
   lastLoginAt: true,
   createdAt: true,
@@ -127,7 +135,8 @@ export class UsersService {
     return toUserSummary(user);
   }
 
-  async create(input: CreateUserInput): Promise<UserSummary> {
+  async create(input: CreateUserInput, actor: AuthenticatedUser): Promise<UserSummary> {
+    this.assertCanAssignRole(actor, input.globalRole);
     const passwordHash = await hash(input.password, PASSWORD_SALT_ROUNDS);
     const { user, notificationId } = await this.prisma.$transaction(async (transaction) => {
       const createdUser = await transaction.user.create({
@@ -251,14 +260,20 @@ export class UsersService {
     };
   }
 
-  async update(userId: string, input: UpdateUserInput): Promise<UserSummary> {
-    await this.assertExists(userId);
+  async update(
+    userId: string,
+    input: UpdateUserInput,
+    actor: AuthenticatedUser,
+  ): Promise<UserSummary> {
+    const target = await this.getManagedUser(userId);
+    this.assertCanManageTarget(actor, target);
+    if (input.globalRole !== undefined) this.assertCanAssignRole(actor, input.globalRole);
 
     if (
-      (input.globalRole !== undefined && input.globalRole !== GlobalRole.PRODUCT_OWNER) ||
-      input.isActive === false
+      target.isSuperAdmin &&
+      (input.globalRole === GlobalRole.MEMBER || input.isActive === false)
     ) {
-      await this.assertNotLastProductOwner(userId);
+      await this.assertNotLastSuperAdmin(userId);
     }
 
     const user = await this.prisma.user.update({
@@ -270,6 +285,7 @@ export class UsersService {
         ...(input.avatarUrl !== undefined ? { avatarUrl: input.avatarUrl } : {}),
         ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
         ...(input.globalRole !== undefined ? { globalRole: input.globalRole } : {}),
+        ...(input.globalRole === GlobalRole.MEMBER ? { isSuperAdmin: false } : {}),
       },
       select: USER_FIELDS,
     });
@@ -282,23 +298,34 @@ export class UsersService {
 
   /** Mise à jour par l'utilisateur lui-même — ne touche ni au rôle ni au statut. */
   async updateOwnProfile(userId: string, input: UpdateProfileInput): Promise<UserSummary> {
-    return this.update(userId, input);
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.email !== undefined ? { email: input.email } : {}),
+        ...(input.jobTitle !== undefined ? { jobTitle: input.jobTitle || null } : {}),
+        ...(input.avatarUrl !== undefined ? { avatarUrl: input.avatarUrl } : {}),
+      },
+      select: USER_FIELDS,
+    });
+    return toUserSummary(user);
   }
 
   /**
    * Suppression logique : l'utilisateur reste référencé par les tickets qu'il a
    * créés et l'historique des modifications, qui perdraient leur sens sans lui.
    */
-  async softDelete(userId: string, actorId: string): Promise<void> {
-    if (userId === actorId) {
+  async softDelete(userId: string, actor: AuthenticatedUser): Promise<void> {
+    if (userId === actor.id) {
       throw new BadRequestException({
         code: 'CANNOT_DELETE_SELF',
         message: 'Vous ne pouvez pas supprimer votre propre compte',
       });
     }
 
-    await this.assertExists(userId);
-    await this.assertNotLastProductOwner(userId);
+    const target = await this.getManagedUser(userId);
+    this.assertCanManageTarget(actor, target);
+    if (target.isSuperAdmin) await this.assertNotLastSuperAdmin(userId);
 
     await this.prisma.user.update({
       where: { id: userId },
@@ -313,8 +340,13 @@ export class UsersService {
     await this.tokens.revokeAllSessions(userId);
   }
 
-  async resetPassword(userId: string, newPassword: string): Promise<void> {
-    await this.assertExists(userId);
+  async resetPassword(
+    userId: string,
+    newPassword: string,
+    actor: AuthenticatedUser,
+  ): Promise<void> {
+    const target = await this.getManagedUser(userId);
+    this.assertCanManageTarget(actor, target);
     await this.prisma.user.update({
       where: { id: userId },
       data: { passwordHash: await hash(newPassword, PASSWORD_SALT_ROUNDS) },
@@ -322,38 +354,65 @@ export class UsersService {
     await this.tokens.revokeAllSessions(userId);
   }
 
-  private async assertExists(userId: string): Promise<void> {
-    const exists = await this.prisma.user.findFirst({
+  private async getManagedUser(userId: string): Promise<{
+    globalRole: GlobalRole;
+    isSuperAdmin: boolean;
+    isActive: boolean;
+  }> {
+    const user = await this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null },
-      select: { id: true },
+      select: { globalRole: true, isSuperAdmin: true, isActive: true },
     });
-    if (!exists)
+    if (!user)
       throw new NotFoundException({
         code: 'USER_NOT_FOUND',
         message: "Cet utilisateur n'existe pas",
       });
+    return user;
   }
 
-  /** Garde-fou : la plateforme doit conserver au moins un Product Owner actif. */
-  private async assertNotLastProductOwner(userId: string): Promise<void> {
+  private assertCanAssignRole(actor: AuthenticatedUser, role: GlobalRole): void {
+    if (role === GlobalRole.ADMIN && !actor.isSuperAdmin) {
+      throw new ForbiddenException({
+        code: 'SUPER_ADMIN_REQUIRED',
+        message: 'Seul le super administrateur peut attribuer le rôle administrateur',
+      });
+    }
+  }
+
+  private assertCanManageTarget(
+    actor: AuthenticatedUser,
+    target: { globalRole: GlobalRole },
+  ): void {
+    if (target.globalRole === GlobalRole.ADMIN && !actor.isSuperAdmin) {
+      throw new ForbiddenException({
+        code: 'SUPER_ADMIN_REQUIRED',
+        message: 'Seul le super administrateur peut gérer un compte administrateur',
+      });
+    }
+  }
+
+  /** Garde-fou : la plateforme doit conserver au moins un super administrateur actif. */
+  private async assertNotLastSuperAdmin(userId: string): Promise<void> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { globalRole: true, isActive: true },
+      select: { isSuperAdmin: true, isActive: true },
     });
-    if (!user || user.globalRole !== GlobalRole.PRODUCT_OWNER || !user.isActive) return;
+    if (!user || !user.isSuperAdmin || !user.isActive) return;
 
-    const remainingProductOwners = await this.prisma.user.count({
+    const remainingSuperAdmins = await this.prisma.user.count({
       where: {
-        globalRole: GlobalRole.PRODUCT_OWNER,
+        isSuperAdmin: true,
+        globalRole: GlobalRole.ADMIN,
         isActive: true,
         deletedAt: null,
         id: { not: userId },
       },
     });
-    if (remainingProductOwners === 0) {
+    if (remainingSuperAdmins === 0) {
       throw new BadRequestException({
-        code: 'LAST_PRODUCT_OWNER',
-        message: 'La plateforme doit conserver au moins un Product Owner actif',
+        code: 'LAST_SUPER_ADMIN',
+        message: 'La plateforme doit conserver au moins un super administrateur actif',
       });
     }
   }
@@ -367,6 +426,7 @@ function toUserSummary(user: UserRow): UserSummary {
     jobTitle: isUserFunction(user.jobTitle) ? user.jobTitle : null,
     avatarUrl: user.avatarUrl,
     globalRole: user.globalRole as GlobalRole,
+    isSuperAdmin: user.isSuperAdmin,
     isActive: user.isActive,
     lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
     createdAt: user.createdAt.toISOString(),

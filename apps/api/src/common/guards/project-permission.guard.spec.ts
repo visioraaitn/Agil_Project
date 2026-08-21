@@ -14,14 +14,10 @@ const USER: AuthenticatedUser = {
   jobTitle: null,
   avatarUrl: null,
   globalRole: GlobalRole.MEMBER,
+  isSuperAdmin: false,
 };
 
 const ADMIN: AuthenticatedUser = { ...USER, id: 'admin-1', globalRole: GlobalRole.ADMIN };
-const PRODUCT_OWNER: AuthenticatedUser = {
-  ...USER,
-  id: 'owner-1',
-  globalRole: GlobalRole.PRODUCT_OWNER,
-};
 
 /**
  * Prisma simulé : `role` est le rôle renvoyé pour l'appartenance au projet,
@@ -150,10 +146,8 @@ describe('ProjectPermissionGuard', () => {
       await expect(run(null, 'pr:approve', ADMIN)).resolves.toBe(true);
     });
 
-    it('réserve la gestion des comptes au Product Owner plateforme', async () => {
-      await expect(run(null, 'user:manage', PRODUCT_OWNER, {})).resolves.toBe(true);
-      const adminDenied = await run(null, 'user:manage', ADMIN, {});
-      expect(adminDenied).toBeInstanceOf(ForbiddenException);
+    it('réserve la gestion des comptes aux administrateurs plateforme', async () => {
+      await expect(run(null, 'user:manage', ADMIN, {})).resolves.toBe(true);
       const denied = await run(null, 'user:manage', USER, {});
       expect(denied).toBeInstanceOf(ForbiddenException);
     });

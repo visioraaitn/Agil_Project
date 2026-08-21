@@ -28,6 +28,8 @@ export interface AuthenticatedUser {
   jobTitle: UserFunction | null;
   avatarUrl: string | null;
   globalRole: GlobalRole;
+  /** Privilège protégé autorisant la gestion des autres administrateurs. */
+  isSuperAdmin: boolean;
 }
 
 export interface SessionResponse {

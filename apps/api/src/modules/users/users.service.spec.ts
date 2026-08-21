@@ -1,10 +1,26 @@
-import { BadRequestException } from '@nestjs/common';
-import { GlobalRole } from '@visiora/shared';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { GlobalRole, type AuthenticatedUser } from '@visiora/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TokenService } from '../auth/token.service';
 import { EmailService } from '../collaboration/email.service';
 import { ObjectStorageService } from '../storage/object-storage.service';
 import { UsersService } from './users.service';
+
+const ADMIN: AuthenticatedUser = {
+  id: 'admin-1',
+  email: 'admin@visiora.ai',
+  name: 'Admin',
+  jobTitle: null,
+  avatarUrl: null,
+  globalRole: GlobalRole.ADMIN,
+  isSuperAdmin: false,
+};
+const SUPER_ADMIN: AuthenticatedUser = {
+  ...ADMIN,
+  id: 'super-admin-1',
+  email: 'kenounheni4@gmail.com',
+  isSuperAdmin: true,
+};
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -73,17 +89,21 @@ describe('UsersService', () => {
         jobTitle: null,
         avatarUrl: null,
         globalRole: GlobalRole.MEMBER,
+        isSuperAdmin: false,
         isActive: true,
         lastLoginAt: null,
         createdAt: new Date(),
       });
 
-      await service.create({
-        email: 'new.user@example.com',
-        name: 'New User',
-        password: 'Initial1234',
-        globalRole: GlobalRole.MEMBER,
-      });
+      await service.create(
+        {
+          email: 'new.user@example.com',
+          name: 'New User',
+          password: 'Initial1234',
+          globalRole: GlobalRole.MEMBER,
+        },
+        ADMIN,
+      );
 
       expect(email.sendAccountCreated).toHaveBeenCalledWith({
         email: 'new.user@example.com',
@@ -112,6 +132,7 @@ describe('UsersService', () => {
           jobTitle: null,
           avatarUrl: data.avatarUrl,
           globalRole: GlobalRole.MEMBER,
+          isSuperAdmin: false,
           isActive: true,
           lastLoginAt: null,
           createdAt: new Date(),
@@ -149,74 +170,110 @@ describe('UsersService', () => {
   });
 
   describe('update', () => {
-    it('interdit la rétrogradation du dernier Product Owner actif', async () => {
-      prisma.user.findFirst.mockResolvedValue({ id: 'admin-1' });
+    it('interdit la rétrogradation du dernier super administrateur actif', async () => {
+      prisma.user.findFirst.mockResolvedValue({
+        globalRole: GlobalRole.ADMIN,
+        isSuperAdmin: true,
+        isActive: true,
+      });
       prisma.user.findUnique.mockResolvedValue({
-        id: 'admin-1',
-        globalRole: GlobalRole.PRODUCT_OWNER,
+        isSuperAdmin: true,
         isActive: true,
       });
       prisma.user.count.mockResolvedValue(0);
 
-      await expect(service.update('admin-1', { globalRole: GlobalRole.MEMBER })).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.update('super-admin-1', { globalRole: GlobalRole.MEMBER }, SUPER_ADMIN),
+      ).rejects.toThrow(BadRequestException);
     });
 
-    it('interdit la désactivation du dernier Product Owner actif', async () => {
-      prisma.user.findFirst.mockResolvedValue({ id: 'admin-1' });
+    it('interdit la désactivation du dernier super administrateur actif', async () => {
+      prisma.user.findFirst.mockResolvedValue({
+        globalRole: GlobalRole.ADMIN,
+        isSuperAdmin: true,
+        isActive: true,
+      });
       prisma.user.findUnique.mockResolvedValue({
-        id: 'admin-1',
-        globalRole: GlobalRole.PRODUCT_OWNER,
+        isSuperAdmin: true,
         isActive: true,
       });
       prisma.user.count.mockResolvedValue(0);
 
-      await expect(service.update('admin-1', { isActive: false })).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.update('super-admin-1', { isActive: false }, SUPER_ADMIN),
+      ).rejects.toThrow(BadRequestException);
     });
 
-    it('autorise la mise à jour si un autre Product Owner actif existe', async () => {
-      prisma.user.findFirst.mockResolvedValue({ id: 'admin-1' });
-      prisma.user.findUnique.mockResolvedValue({
-        id: 'admin-1',
-        globalRole: GlobalRole.PRODUCT_OWNER,
+    it('autorise la mise à jour si un autre super administrateur actif existe', async () => {
+      prisma.user.findFirst.mockResolvedValue({
+        globalRole: GlobalRole.ADMIN,
+        isSuperAdmin: true,
         isActive: true,
       });
+      prisma.user.findUnique.mockResolvedValue({ isSuperAdmin: true, isActive: true });
       prisma.user.count.mockResolvedValue(1);
       prisma.user.update.mockResolvedValue({
-        id: 'admin-1',
+        id: 'super-admin-1',
         email: 'admin@visiora.ai',
         name: 'Admin',
         jobTitle: null,
         avatarUrl: null,
         globalRole: GlobalRole.MEMBER,
+        isSuperAdmin: false,
         isActive: true,
         lastLoginAt: null,
         createdAt: new Date(),
       });
 
-      const result = await service.update('admin-1', { globalRole: GlobalRole.MEMBER });
+      const result = await service.update(
+        'super-admin-1',
+        { globalRole: GlobalRole.MEMBER },
+        SUPER_ADMIN,
+      );
       expect(result.globalRole).toBe(GlobalRole.MEMBER);
+    });
+
+    it('interdit à un administrateur normal de modifier un autre administrateur', async () => {
+      prisma.user.findFirst.mockResolvedValue({
+        globalRole: GlobalRole.ADMIN,
+        isSuperAdmin: false,
+        isActive: true,
+      });
+      await expect(service.update('admin-2', { name: 'Admin 2' }, ADMIN)).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it("interdit à un administrateur normal d'attribuer le rôle administrateur", async () => {
+      prisma.user.findFirst.mockResolvedValue({
+        globalRole: GlobalRole.MEMBER,
+        isSuperAdmin: false,
+        isActive: true,
+      });
+      await expect(
+        service.update('member-1', { globalRole: GlobalRole.ADMIN }, ADMIN),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 
   describe('softDelete', () => {
     it('interdit la suppression de son propre compte', async () => {
-      await expect(service.softDelete('admin-1', 'admin-1')).rejects.toThrow(BadRequestException);
+      await expect(service.softDelete('admin-1', ADMIN)).rejects.toThrow(BadRequestException);
     });
 
-    it('interdit la suppression du dernier Product Owner', async () => {
-      prisma.user.findFirst.mockResolvedValue({ id: 'admin-1' });
+    it('interdit la suppression du dernier super administrateur', async () => {
+      prisma.user.findFirst.mockResolvedValue({
+        globalRole: GlobalRole.ADMIN,
+        isSuperAdmin: true,
+        isActive: true,
+      });
       prisma.user.findUnique.mockResolvedValue({
-        id: 'admin-1',
-        globalRole: GlobalRole.PRODUCT_OWNER,
+        isSuperAdmin: true,
         isActive: true,
       });
       prisma.user.count.mockResolvedValue(0);
 
-      await expect(service.softDelete('admin-1', 'other-admin')).rejects.toThrow(
+      await expect(service.softDelete('super-admin-1', SUPER_ADMIN)).rejects.toThrow(
         BadRequestException,
       );
     });

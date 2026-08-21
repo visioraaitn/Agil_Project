@@ -6,10 +6,12 @@ export type AuthStatus = 'loading' | 'authenticated' | 'anonymous';
 export interface AuthState {
   status: AuthStatus;
   user: AuthenticatedUser | null;
-  /** Administration technique des projets (Admin ou Product Owner plateforme). */
+  /** Administration technique de la plateforme. */
   isAdmin: boolean;
-  /** Gouvernance des comptes et attribution des rôles, réservée au Product Owner. */
+  /** Gestion des comptes membres, accessible aux administrateurs. */
   canManageUsers: boolean;
+  /** Gestion des comptes administrateurs, réservée au super administrateur. */
+  canManageAdmins: boolean;
   login: (input: LoginInput) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;

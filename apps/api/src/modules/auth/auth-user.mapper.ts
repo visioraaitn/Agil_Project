@@ -7,6 +7,7 @@ export interface AuthUserRow {
   jobTitle: string | null;
   avatarUrl: string | null;
   globalRole: string;
+  isSuperAdmin: boolean;
 }
 
 /** Projection de la ligne `User` vers la forme exposée au client. */
@@ -18,5 +19,6 @@ export function toAuthenticatedUser(user: AuthUserRow): AuthenticatedUser {
     jobTitle: isUserFunction(user.jobTitle) ? user.jobTitle : null,
     avatarUrl: user.avatarUrl,
     globalRole: user.globalRole as GlobalRole,
+    isSuperAdmin: user.isSuperAdmin,
   };
 }

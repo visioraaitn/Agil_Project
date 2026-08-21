@@ -14,7 +14,7 @@ import { ReposPage } from '@/features/repos/pages/ReposPage';
 import { SettingsPage } from '@/features/settings/pages/SettingsPage';
 import { SprintsPage } from '@/features/sprints/pages/SprintsPage';
 import { UsersPage } from '@/features/admin/pages/UsersPage';
-import { RequireAuth, RequireProductOwner } from './guards';
+import { RequireAdmin, RequireAuth } from './guards';
 
 /**
  * Les pages livrées sont montées ; celles des phases suivantes restent des
@@ -34,7 +34,7 @@ const router = createBrowserRouter([
           { path: 'settings', element: <SettingsPage /> },
           {
             path: 'admin',
-            element: <RequireProductOwner />,
+            element: <RequireAdmin />,
             children: [{ path: 'users', element: <UsersPage /> }],
           },
           {

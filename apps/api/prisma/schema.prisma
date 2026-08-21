@@ -18,7 +18,6 @@ datasource db {
 // ===========================================================================
 
 enum GlobalRole {
-  PRODUCT_OWNER // gouvernance plateforme : comptes et attribution des rôles
   ADMIN // administration de la plateforme (A.1 : CRUD utilisateurs, projets)
   MEMBER // utilisateur standard, ses droits viennent de ses rôles projet
 }
@@ -39,6 +38,8 @@ model User {
   avatarUrl    String?
   jobTitle     String?
   globalRole   GlobalRole @default(MEMBER)
+  /// Privilège interne protégé : gestion des comptes ADMIN. Jamais modifiable depuis l'API.
+  isSuperAdmin Boolean    @default(false)
   isActive     Boolean    @default(true) // A.1 · désactivation
   lastLoginAt  DateTime?
   createdAt    DateTime   @default(now())
@@ -46,18 +47,18 @@ model User {
   deletedAt    DateTime? // A.1 · suppression logique (préserve l'historique)
 
   memberships       ProjectMember[]
-  createdProjects   Project[]               @relation("ProjectCreator")
-  assignedItems     WorkItem[]              @relation("WorkItemAssignee")
-  reportedItems     WorkItem[]              @relation("WorkItemReporter")
+  createdProjects   Project[]                @relation("ProjectCreator")
+  assignedItems     WorkItem[]               @relation("WorkItemAssignee")
+  reportedItems     WorkItem[]               @relation("WorkItemReporter")
   comments          Comment[]
   attachments       Attachment[]
   activities        ActivityLog[]
   notifications     Notification[]
   notificationPrefs NotificationPreference[]
   sessions          Session[]
-  declaredPRs       PullRequest[]           @relation("PullRequestAuthor")
-  reviewedPRs       PullRequest[]           @relation("PullRequestReviewer")
-  mergedPRs         PullRequest[]           @relation("PullRequestMerger")
+  declaredPRs       PullRequest[]            @relation("PullRequestAuthor")
+  reviewedPRs       PullRequest[]            @relation("PullRequestReviewer")
+  mergedPRs         PullRequest[]            @relation("PullRequestMerger")
   prEvents          PullRequestEvent[]
   prComments        PullRequestComment[]
   retroItems        RetrospectiveItem[]
@@ -69,14 +70,14 @@ model User {
 
 /// Refresh tokens (rotation) — permet la révocation de session côté serveur.
 model Session {
-  id               String   @id @default(uuid())
+  id               String    @id @default(uuid())
   userId           String
-  refreshTokenHash String   @unique
+  refreshTokenHash String    @unique
   userAgent        String?
   ipAddress        String?
   expiresAt        DateTime
   revokedAt        DateTime?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -96,31 +97,31 @@ enum ProjectStatus {
 }
 
 model Project {
-  id          String        @id @default(uuid())
+  id             String        @id @default(uuid())
   /// Clé courte affichée dans les identifiants de tickets : VIS-142
-  key         String        @unique
-  name        String
-  description String?
-  company     String? // B.1 · entreprise cliente
-  status      ProjectStatus @default(ACTIVE)
-  startDate   DateTime?     @db.Date
-  targetDate  DateTime?     @db.Date
-  color       String? // pastille couleur dans le sélecteur de projet
+  key            String        @unique
+  name           String
+  description    String?
+  company        String? // B.1 · entreprise cliente
+  status         ProjectStatus @default(ACTIVE)
+  startDate      DateTime?     @db.Date
+  targetDate     DateTime?     @db.Date
+  color          String? // pastille couleur dans le sélecteur de projet
   /// Compteur du dernier numéro de ticket émis (incrémenté en transaction)
-  lastItemNumber Int        @default(0)
-  createdById String
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  archivedAt  DateTime?
+  lastItemNumber Int           @default(0)
+  createdById    String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  archivedAt     DateTime?
 
-  createdBy   User            @relation("ProjectCreator", fields: [createdById], references: [id])
-  members     ProjectMember[]
-  repositories Repository[]
-  workItems   WorkItem[]
-  sprints     Sprint[]
-  labels      Label[]
-  milestones  Milestone[]
-  activities  ActivityLog[]
+  createdBy     User            @relation("ProjectCreator", fields: [createdById], references: [id])
+  members       ProjectMember[]
+  repositories  Repository[]
+  workItems     WorkItem[]
+  sprints       Sprint[]
+  labels        Label[]
+  milestones    Milestone[]
+  activities    ActivityLog[]
   notifications Notification[]
 
   @@index([status])
@@ -192,10 +193,10 @@ model Branch {
   createdById  String?
   createdAt    DateTime @default(now())
 
-  repository        Repository    @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
-  createdBy         User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  pullRequestsFrom  PullRequest[] @relation("PullRequestSource")
-  pullRequestsTo    PullRequest[] @relation("PullRequestTarget")
+  repository       Repository    @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  createdBy        User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  pullRequestsFrom PullRequest[] @relation("PullRequestSource")
+  pullRequestsTo   PullRequest[] @relation("PullRequestTarget")
 
   @@unique([repositoryId, name])
 }
@@ -365,7 +366,7 @@ model WorkItem {
   storyPoints Int?
 
   /// C.1 · Ordre dans le backlog, parmi les frères (LexoRank : réordonnancement O(1))
-  rank String
+  rank      String
   /// D.1 · Ordre dans la colonne du board — distinct de `rank` : réordonner une
   /// carte sur le board ne doit pas bousculer la priorisation du backlog.
   boardRank String
@@ -458,35 +459,35 @@ enum PullRequestStatus {
 
 /// E.1 · Modèle complet de Pull Request
 model PullRequest {
-  id           String            @id @default(uuid())
+  id             String            @id @default(uuid())
   /// Numéro séquentiel (ex. PR #1, PR #2, PR #142 par dépôt)
-  number       Int               @default(1)
-  workItemId   String
-  repositoryId String
-  title        String
+  number         Int               @default(1)
+  workItemId     String
+  repositoryId   String
+  title          String
   /// Description riche Markdown
-  description  String?
+  description    String?
   /// Numéro/URL de la PR sur la plateforme Git externe si applicable
   externalNumber Int?
-  externalUrl  String?
-  status       PullRequestStatus @default(OPEN)
+  externalUrl    String?
+  status         PullRequestStatus @default(OPEN)
 
-  sourceBranchId String
-  targetBranchId String?
+  sourceBranchId   String
+  targetBranchId   String?
   /// Conservé en clair si la branche cible n'est pas encore référencée
   targetBranchName String?
 
-  declaredById String
-  reviewedById String?
-  reviewedAt   DateTime?
+  declaredById    String
+  reviewedById    String?
+  reviewedAt      DateTime?
   /// Commentaire d'approbation ou résumé de révision
-  reviewComment String?
+  reviewComment   String?
   /// Motif obligatoire lors d'un rejet définitif
   rejectionReason String?
 
   /// Traçabilité de la fusion
-  mergedById   String?
-  mergedAt     DateTime?
+  mergedById String?
+  mergedAt   DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -543,17 +544,17 @@ model PullRequestEvent {
 
 /// G.2 · Fil de commentaires sur tickets (réponses imbriquées à un niveau)
 model Comment {
-  id         String   @id @default(uuid())
-  workItemId String
-  authorId   String
-  body       String
-  parentId   String?
+  id               String    @id @default(uuid())
+  workItemId       String
+  authorId         String
+  body             String
+  parentId         String?
   /// Utilisateurs mentionnés (@) → déclenche une notification
-  mentionedUserIds String[] @default([])
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  editedAt   DateTime?
-  deletedAt  DateTime?
+  mentionedUserIds String[]  @default([])
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  editedAt         DateTime?
+  deletedAt        DateTime?
 
   workItem WorkItem  @relation(fields: [workItemId], references: [id], onDelete: Cascade)
   author   User      @relation(fields: [authorId], references: [id])
@@ -616,18 +617,18 @@ enum NotificationType {
 
 /// G.1 · Notifications in-app (push WebSocket / SSE) + trace de l'envoi email
 model Notification {
-  id         String           @id @default(uuid())
-  userId     String
-  projectId  String?
-  type       NotificationType
-  title      String
-  body       String?
-  entityType EntityType?
-  entityId   String?
-  isRead     Boolean          @default(false)
-  readAt     DateTime?
+  id          String           @id @default(uuid())
+  userId      String
+  projectId   String?
+  type        NotificationType
+  title       String
+  body        String?
+  entityType  EntityType?
+  entityId    String?
+  isRead      Boolean          @default(false)
+  readAt      DateTime?
   emailSentAt DateTime?
-  createdAt  DateTime         @default(now())
+  createdAt   DateTime         @default(now())
 
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)

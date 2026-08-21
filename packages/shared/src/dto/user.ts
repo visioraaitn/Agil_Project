@@ -72,6 +72,7 @@ export interface UserSummary {
   jobTitle: UserFunction | null;
   avatarUrl: string | null;
   globalRole: GlobalRole;
+  isSuperAdmin: boolean;
   isActive: boolean;
   lastLoginAt: string | null;
   createdAt: string;

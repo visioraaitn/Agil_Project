@@ -126,19 +126,21 @@ export class UsersController {
   @RequirePermission('user:manage')
   @ApiOperation({ summary: 'Création de compte' })
   create(
+    @CurrentUser() actor: AuthenticatedUser,
     @Body(new ZodValidationPipe(createUserSchema)) dto: CreateUserInput,
   ): Promise<UserSummary> {
-    return this.users.create(dto);
+    return this.users.create(dto, actor);
   }
 
   @Patch(':userId')
   @RequirePermission('user:manage')
   @ApiOperation({ summary: "Modification d'un compte (profil, rôle global, activation)" })
   update(
+    @CurrentUser() actor: AuthenticatedUser,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Body(new ZodValidationPipe(updateUserSchema)) dto: UpdateUserInput,
   ): Promise<UserSummary> {
-    return this.users.update(userId, dto);
+    return this.users.update(userId, dto, actor);
   }
 
   @Post(':userId/reset-password')
@@ -146,10 +148,11 @@ export class UsersController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Réinitialisation du mot de passe par un administrateur' })
   async resetPassword(
+    @CurrentUser() actor: AuthenticatedUser,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Body(new ZodValidationPipe(resetPasswordSchema)) dto: ResetPasswordInput,
   ): Promise<void> {
-    await this.users.resetPassword(userId, dto.newPassword);
+    await this.users.resetPassword(userId, dto.newPassword, actor);
   }
 
   @Delete(':userId')
@@ -160,6 +163,6 @@ export class UsersController {
     @Param('userId', ParseUUIDPipe) userId: string,
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<void> {
-    await this.users.softDelete(userId, actor.id);
+    await this.users.softDelete(userId, actor);
   }
 }

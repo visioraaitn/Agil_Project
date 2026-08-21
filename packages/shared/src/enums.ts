@@ -6,7 +6,6 @@
  */
 
 export const GlobalRole = {
-  PRODUCT_OWNER: 'PRODUCT_OWNER',
   ADMIN: 'ADMIN',
   MEMBER: 'MEMBER',
 } as const;

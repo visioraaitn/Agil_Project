@@ -63,10 +63,10 @@ export function SettingsPage() {
   }, [preferences]);
 
   const roleLabel = useMemo(() => {
-    if (user?.globalRole === GlobalRole.PRODUCT_OWNER) return 'Product Owner';
+    if (user?.isSuperAdmin) return 'Super administrateur';
     if (user?.globalRole === GlobalRole.ADMIN) return 'Administrateur';
     return 'Membre';
-  }, [user?.globalRole]);
+  }, [user?.globalRole, user?.isSuperAdmin]);
   const functionLabel = user?.jobTitle ? LABELS_FR.userFunction[user.jobTitle] : 'Non renseignée';
 
   const saveProfile = async () => {
@@ -169,14 +169,7 @@ export function SettingsPage() {
                   <h2 className="text-ink-900 truncate text-lg font-semibold">{user?.name}</h2>
                   <p className="text-ink-400 truncate text-sm">{user?.email}</p>
                 </div>
-                <Badge
-                  tone={
-                    user?.globalRole === GlobalRole.PRODUCT_OWNER ||
-                    user?.globalRole === GlobalRole.ADMIN
-                      ? 'accent'
-                      : 'neutral'
-                  }
-                >
+                <Badge tone={user?.globalRole === GlobalRole.ADMIN ? 'accent' : 'neutral'}>
                   {roleLabel}
                 </Badge>
               </header>

@@ -26,17 +26,17 @@ describe('matrice de permissions', () => {
     }
   });
 
-  it('accorde tout au Product Owner plateforme, même hors projet', () => {
-    const productOwner = { globalRole: GlobalRole.PRODUCT_OWNER, projectRole: null };
+  it("accorde tout à l'administrateur plateforme, même hors projet", () => {
+    const productOwner = { globalRole: GlobalRole.ADMIN, projectRole: null };
     for (const permission of PERMISSIONS) {
       expect(can(productOwner, permission)).toBe(true);
     }
   });
 
-  it("interdit à l'administrateur de gérer les comptes", () => {
+  it("autorise l'administrateur à gérer les comptes et les projets", () => {
     const admin = { globalRole: GlobalRole.ADMIN, projectRole: null };
-    expect(can(admin, 'user:manage')).toBe(false);
-    expect(can(admin, 'project:member:manage')).toBe(false);
+    expect(can(admin, 'user:manage')).toBe(true);
+    expect(can(admin, 'project:member:manage')).toBe(true);
     expect(can(admin, 'project:create')).toBe(true);
     expect(can(admin, 'pr:approve')).toBe(true);
   });

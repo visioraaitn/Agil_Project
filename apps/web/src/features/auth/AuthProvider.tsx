@@ -62,9 +62,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       status,
       user,
-      isAdmin:
-        user?.globalRole === GlobalRole.ADMIN || user?.globalRole === GlobalRole.PRODUCT_OWNER,
-      canManageUsers: user?.globalRole === GlobalRole.PRODUCT_OWNER,
+      isAdmin: user?.globalRole === GlobalRole.ADMIN,
+      canManageUsers: user?.globalRole === GlobalRole.ADMIN,
+      canManageAdmins: user?.isSuperAdmin === true,
       login,
       logout,
       refreshUser,

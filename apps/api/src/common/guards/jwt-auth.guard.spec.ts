@@ -11,6 +11,7 @@ const ACTIVE_USER = {
   name: 'Nour Hamdi',
   avatarUrl: null,
   globalRole: GlobalRole.MEMBER,
+  isSuperAdmin: false,
   isActive: true,
   deletedAt: null,
 };
@@ -90,6 +91,7 @@ describe('JwtAuthGuard', () => {
       jobTitle: null,
       avatarUrl: null,
       globalRole: GlobalRole.MEMBER,
+      isSuperAdmin: false,
     });
   });
 
