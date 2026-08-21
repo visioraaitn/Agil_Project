@@ -17,6 +17,10 @@ describe('UsersService', () => {
       update: jest.Mock;
       findMany: jest.Mock;
     };
+    notification: {
+      create: jest.Mock;
+      update: jest.Mock;
+    };
     $transaction: jest.Mock;
   };
   let tokens: { revokeAllSessions: jest.Mock };
@@ -33,7 +37,13 @@ describe('UsersService', () => {
         update: jest.fn(),
         findMany: jest.fn(),
       },
-      $transaction: jest.fn(),
+      notification: {
+        create: jest.fn().mockResolvedValue({ id: 'notification-1' }),
+        update: jest.fn().mockResolvedValue(undefined),
+      },
+      $transaction: jest.fn(async (callback: (transaction: unknown) => unknown) =>
+        callback(prisma),
+      ),
     };
     tokens = {
       revokeAllSessions: jest.fn().mockResolvedValue(undefined),
@@ -80,6 +90,14 @@ describe('UsersService', () => {
         name: 'New User',
         initialPassword: 'Initial1234',
       });
+      expect(prisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ userId: 'user-1' }),
+        }),
+      );
+      expect(prisma.notification.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'notification-1' } }),
+      );
     });
   });
 
@@ -131,11 +149,11 @@ describe('UsersService', () => {
   });
 
   describe('update', () => {
-    it('interdit la rétrogradation du dernier administrateur actif', async () => {
+    it('interdit la rétrogradation du dernier Product Owner actif', async () => {
       prisma.user.findFirst.mockResolvedValue({ id: 'admin-1' });
       prisma.user.findUnique.mockResolvedValue({
         id: 'admin-1',
-        globalRole: GlobalRole.ADMIN,
+        globalRole: GlobalRole.PRODUCT_OWNER,
         isActive: true,
       });
       prisma.user.count.mockResolvedValue(0);
@@ -145,11 +163,11 @@ describe('UsersService', () => {
       );
     });
 
-    it('interdit la désactivation du dernier administrateur actif', async () => {
+    it('interdit la désactivation du dernier Product Owner actif', async () => {
       prisma.user.findFirst.mockResolvedValue({ id: 'admin-1' });
       prisma.user.findUnique.mockResolvedValue({
         id: 'admin-1',
-        globalRole: GlobalRole.ADMIN,
+        globalRole: GlobalRole.PRODUCT_OWNER,
         isActive: true,
       });
       prisma.user.count.mockResolvedValue(0);
@@ -159,11 +177,11 @@ describe('UsersService', () => {
       );
     });
 
-    it('autorise la mise à jour si un autre administrateur actif existe', async () => {
+    it('autorise la mise à jour si un autre Product Owner actif existe', async () => {
       prisma.user.findFirst.mockResolvedValue({ id: 'admin-1' });
       prisma.user.findUnique.mockResolvedValue({
         id: 'admin-1',
-        globalRole: GlobalRole.ADMIN,
+        globalRole: GlobalRole.PRODUCT_OWNER,
         isActive: true,
       });
       prisma.user.count.mockResolvedValue(1);
@@ -189,11 +207,11 @@ describe('UsersService', () => {
       await expect(service.softDelete('admin-1', 'admin-1')).rejects.toThrow(BadRequestException);
     });
 
-    it('interdit la suppression du dernier administrateur', async () => {
+    it('interdit la suppression du dernier Product Owner', async () => {
       prisma.user.findFirst.mockResolvedValue({ id: 'admin-1' });
       prisma.user.findUnique.mockResolvedValue({
         id: 'admin-1',
-        globalRole: GlobalRole.ADMIN,
+        globalRole: GlobalRole.PRODUCT_OWNER,
         isActive: true,
       });
       prisma.user.count.mockResolvedValue(0);

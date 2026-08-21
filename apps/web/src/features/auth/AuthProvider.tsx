@@ -34,15 +34,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = useCallback(
-    async (input: LoginInput) => {
-      const session = await authApi.login(input);
-      setAccessToken(session.accessToken);
-      setUser(session.user);
-      setStatus('authenticated');
-    },
-    [],
-  );
+  const login = useCallback(async (input: LoginInput) => {
+    const session = await authApi.login(input);
+    setAccessToken(session.accessToken);
+    setUser(session.user);
+    setStatus('authenticated');
+  }, []);
 
   const logout = useCallback(async () => {
     try {
@@ -65,7 +62,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       status,
       user,
-      isAdmin: user?.globalRole === GlobalRole.ADMIN,
+      isAdmin:
+        user?.globalRole === GlobalRole.ADMIN || user?.globalRole === GlobalRole.PRODUCT_OWNER,
+      canManageUsers: user?.globalRole === GlobalRole.PRODUCT_OWNER,
       login,
       logout,
       refreshUser,

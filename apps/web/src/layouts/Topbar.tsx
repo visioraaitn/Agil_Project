@@ -6,6 +6,7 @@ import {
   FolderKanban,
   LayoutDashboard,
   LogOut,
+  Menu,
   Moon,
   Settings,
   Shield,
@@ -25,13 +26,13 @@ import {
 import { GlobalSearchBox } from '@/features/search/GlobalSearchBox';
 import { useTheme } from '@/lib/use-theme';
 
-const API_DOCS_URL =
-  import.meta.env.VITE_API_DOCS_URL ??
-  (import.meta.env.DEV ? 'http://localhost:3000/api/v1/docs' : null);
+const API_DOCS_URL = import.meta.env.DEV
+  ? (import.meta.env.VITE_API_DOCS_URL ?? 'http://localhost:3000/api/v1/docs')
+  : null;
 
 /** Barre superieure : recherche globale, notifications, compte. */
-export function Topbar() {
-  const { user, logout, isAdmin } = useAuth();
+export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
+  const { user, logout, canManageUsers } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const { projectKey } = useParams<{ projectKey?: string }>();
@@ -80,6 +81,14 @@ export function Topbar() {
 
   return (
     <header className="border-border-default bg-surface flex h-10 shrink-0 items-center gap-3 border-b px-3">
+      <button
+        type="button"
+        onClick={onOpenSidebar}
+        className="text-ink-500 hover:text-ink-900 hover:bg-surface-sunken rounded p-1 transition-colors md:hidden"
+        aria-label="Ouvrir la navigation"
+      >
+        <Menu className="size-5" strokeWidth={1.75} />
+      </button>
       <span className="text-ink-900 text-lg font-semibold tracking-tight">
         Visiora<span className="text-accent-500">AI</span>
       </span>
@@ -201,7 +210,7 @@ export function Topbar() {
               />
             </div>
 
-            {isAdmin && (
+            {canManageUsers && (
               <div className="border-border-subtle border-t py-1">
                 <p className="text-ink-400 px-3 py-1 text-xs font-semibold uppercase">
                   Administration

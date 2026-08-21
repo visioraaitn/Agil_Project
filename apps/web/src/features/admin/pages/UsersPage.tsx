@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { KeyRound, Pencil, Plus, Search, Trash2 } from 'lucide-react';
-import { GlobalRole, type UserSummary } from '@visiora/shared';
+import { GlobalRole, LABELS_FR, type UserSummary } from '@visiora/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar } from '@/components/common/Avatar';
@@ -136,9 +136,13 @@ export function UsersPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="text-ink-500 px-3 py-1.5">{user.jobTitle ?? '—'}</td>
+                  <td className="text-ink-500 px-3 py-1.5">
+                    {user.jobTitle ? LABELS_FR.userFunction[user.jobTitle] : '—'}
+                  </td>
                   <td className="px-3 py-1.5">
-                    {user.globalRole === GlobalRole.ADMIN ? (
+                    {user.globalRole === GlobalRole.PRODUCT_OWNER ? (
+                      <Badge tone="accent">Product Owner</Badge>
+                    ) : user.globalRole === GlobalRole.ADMIN ? (
                       <Badge tone="accent">Administrateur</Badge>
                     ) : (
                       <Badge>Membre</Badge>

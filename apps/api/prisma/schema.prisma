@@ -18,6 +18,7 @@ datasource db {
 // ===========================================================================
 
 enum GlobalRole {
+  PRODUCT_OWNER // gouvernance plateforme : comptes et attribution des rôles
   ADMIN // administration de la plateforme (A.1 : CRUD utilisateurs, projets)
   MEMBER // utilisateur standard, ses droits viennent de ses rôles projet
 }
@@ -594,6 +595,7 @@ model ActivityLog {
 }
 
 enum NotificationType {
+  ACCOUNT_CREATED
   ITEM_ASSIGNED
   ITEM_STATUS_CHANGED
   ITEM_COMMENTED

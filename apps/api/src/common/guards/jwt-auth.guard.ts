@@ -13,7 +13,7 @@ export class JwtAuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly tokens: TokenService,
     private readonly prisma: PrismaService,
-  ) { }
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
@@ -25,7 +25,10 @@ export class JwtAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request & { user?: AuthenticatedUser }>();
     const token = extractBearerToken(request);
     if (!token) {
-      throw new UnauthorizedException({ code: 'UNAUTHENTICATED', message: 'Authentification requise' });
+      throw new UnauthorizedException({
+        code: 'UNAUTHENTICATED',
+        message: 'Authentification requise',
+      });
     }
 
     const payload = this.tokens.verifyAccessToken(token);
@@ -41,6 +44,7 @@ export class JwtAuthGuard implements CanActivate {
         id: true,
         email: true,
         name: true,
+        jobTitle: true,
         avatarUrl: true,
         globalRole: true,
         isActive: true,
@@ -49,7 +53,10 @@ export class JwtAuthGuard implements CanActivate {
     });
 
     if (!user || !user.isActive || user.deletedAt) {
-      throw new UnauthorizedException({ code: 'ACCOUNT_DISABLED', message: 'Ce compte n’est plus actif' });
+      throw new UnauthorizedException({
+        code: 'ACCOUNT_DISABLED',
+        message: 'Ce compte n’est plus actif',
+      });
     }
 
     request.user = toAuthenticatedUser(user);

@@ -19,8 +19,8 @@ export function RequireAuth() {
  * Réserve les routes d'administration. Ce contrôle n'est qu'un confort
  * d'affichage : l'API refuse de toute façon les requêtes sans `user:manage`.
  */
-export function RequireAdmin() {
-  const { isAdmin } = useAuth();
-  if (!isAdmin) return <Navigate to="/portfolio" replace />;
+export function RequireProductOwner() {
+  const { canManageUsers } = useAuth();
+  if (!canManageUsers) return <Navigate to="/portfolio" replace />;
   return <Outlet />;
 }

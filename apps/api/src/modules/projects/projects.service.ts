@@ -5,7 +5,7 @@ import {
   AuthenticatedUser,
   CreateProjectInput,
   EntityType,
-  GlobalRole,
+  isPlatformAdministrator,
   ListProjectsQuery,
   NotificationType,
   Paginated,
@@ -59,8 +59,11 @@ export class ProjectsService {
    * ils sont membres — la liste ne doit pas révéler l'existence de projets
    * auxquels on n'a pas accès.
    */
-  async list(user: AuthenticatedUser, query: ListProjectsQuery): Promise<Paginated<ProjectSummary>> {
-    const isAdmin = user.globalRole === GlobalRole.ADMIN;
+  async list(
+    user: AuthenticatedUser,
+    query: ListProjectsQuery,
+  ): Promise<Paginated<ProjectSummary>> {
+    const isAdmin = isPlatformAdministrator(user.globalRole);
     const restrictToMemberships = !isAdmin || query.mine === true;
 
     const where: Prisma.ProjectWhereInput = {
@@ -107,7 +110,8 @@ export class ProjectsService {
       where: { id: projectId },
       select: PROJECT_FIELDS,
     });
-    if (!project) throw new NotFoundException({ code: 'PROJECT_NOT_FOUND', message: "Ce projet n'existe pas" });
+    if (!project)
+      throw new NotFoundException({ code: 'PROJECT_NOT_FOUND', message: "Ce projet n'existe pas" });
 
     return toProjectSummary(project, await this.access.getProjectRole(user.id, projectId));
   }
@@ -188,7 +192,11 @@ export class ProjectsService {
       where: { id: input.userId, deletedAt: null },
       select: { id: true, isActive: true },
     });
-    if (!user) throw new NotFoundException({ code: 'USER_NOT_FOUND', message: "Cet utilisateur n'existe pas" });
+    if (!user)
+      throw new NotFoundException({
+        code: 'USER_NOT_FOUND',
+        message: "Cet utilisateur n'existe pas",
+      });
     if (!user.isActive) {
       throw new BadRequestException({
         code: 'USER_INACTIVE',
@@ -300,7 +308,10 @@ export class ProjectsService {
   }
 }
 
-function toProjectSummary(project: ProjectRow, currentUserRole: ProjectRole | null): ProjectSummary {
+function toProjectSummary(
+  project: ProjectRow,
+  currentUserRole: ProjectRole | null,
+): ProjectSummary {
   return {
     id: project.id,
     key: project.key,

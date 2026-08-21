@@ -129,12 +129,15 @@ export class EmailService {
   }
 
   async sendAccountCreated(account: AccountCreatedEmail): Promise<boolean> {
+    const appUrl = this.config.get('APP_URL', { infer: true }).replace(/\/$/, '');
     const body = [
       `Bonjour ${account.name},`,
       '',
       'Votre compte VisioraAI Agile a été créé.',
       `Email : ${account.email}`,
       `Mot de passe initial : ${account.initialPassword}`,
+      '',
+      `Accéder à l'application : ${appUrl}/login`,
       '',
       'Connectez-vous puis changez immédiatement ce mot de passe depuis Paramètres > Sécurité.',
       "Si vous n'attendiez pas la création de ce compte, contactez votre administrateur.",

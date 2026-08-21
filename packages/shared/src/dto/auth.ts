@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import { UserFunction } from '../enums';
+
+const optionalUserFunctionSchema = z
+  .union([z.nativeEnum(UserFunction), z.literal('')])
+  .nullable()
+  .optional();
 
 export const passwordSchema = z
   .string()
@@ -23,7 +29,7 @@ export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export const updateProfileSchema = z.object({
   name: z.string().min(2).max(120).optional(),
   email: z.string().email().optional(),
-  jobTitle: z.string().max(120).nullable().optional(),
+  jobTitle: optionalUserFunctionSchema,
   avatarUrl: z.string().url().nullable().optional(),
 });
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;

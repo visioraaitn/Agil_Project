@@ -4,14 +4,17 @@ import { hash } from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
 import {
   CreateUserInput,
+  EntityType,
   GlobalRole,
   ListUsersQuery,
+  NotificationType,
   Paginated,
   UpdateProfileInput,
   UpdateUserInput,
   UserDirectoryEntry,
   UserDirectoryQuery,
   UserSummary,
+  isUserFunction,
 } from '@visiora/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TokenService } from '../auth/token.service';
@@ -125,15 +128,30 @@ export class UsersService {
   }
 
   async create(input: CreateUserInput): Promise<UserSummary> {
-    const user = await this.prisma.user.create({
-      data: {
-        email: input.email,
-        name: input.name,
-        jobTitle: input.jobTitle ?? null,
-        globalRole: input.globalRole,
-        passwordHash: await hash(input.password, PASSWORD_SALT_ROUNDS),
-      },
-      select: USER_FIELDS,
+    const passwordHash = await hash(input.password, PASSWORD_SALT_ROUNDS);
+    const { user, notificationId } = await this.prisma.$transaction(async (transaction) => {
+      const createdUser = await transaction.user.create({
+        data: {
+          email: input.email,
+          name: input.name,
+          jobTitle: input.jobTitle || null,
+          globalRole: input.globalRole,
+          passwordHash,
+        },
+        select: USER_FIELDS,
+      });
+      const notification = await transaction.notification.create({
+        data: {
+          userId: createdUser.id,
+          type: NotificationType.ACCOUNT_CREATED,
+          title: 'Bienvenue sur VisioraAI Agile',
+          body: 'Votre compte est prêt. Consultez votre email pour vos informations de connexion.',
+          entityType: EntityType.USER,
+          entityId: createdUser.id,
+        },
+        select: { id: true },
+      });
+      return { user: createdUser, notificationId: notification.id };
     });
 
     const emailSent = await this.email.sendAccountCreated({
@@ -143,6 +161,12 @@ export class UsersService {
     });
     if (!emailSent) {
       this.logger.warn(`Compte ${user.id} créé, mais l'email de bienvenue n'a pas été envoyé.`);
+    } else {
+      await this.prisma.notification
+        .update({ where: { id: notificationId }, data: { emailSentAt: new Date() } })
+        .catch((error: unknown) => {
+          this.logger.warn(`Statut email non enregistré : ${(error as Error).message}`);
+        });
     }
 
     return toUserSummary(user);
@@ -231,10 +255,10 @@ export class UsersService {
     await this.assertExists(userId);
 
     if (
-      (input.globalRole !== undefined && input.globalRole !== GlobalRole.ADMIN) ||
+      (input.globalRole !== undefined && input.globalRole !== GlobalRole.PRODUCT_OWNER) ||
       input.isActive === false
     ) {
-      await this.assertNotLastAdmin(userId);
+      await this.assertNotLastProductOwner(userId);
     }
 
     const user = await this.prisma.user.update({
@@ -242,7 +266,7 @@ export class UsersService {
       data: {
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(input.email !== undefined ? { email: input.email } : {}),
-        ...(input.jobTitle !== undefined ? { jobTitle: input.jobTitle } : {}),
+        ...(input.jobTitle !== undefined ? { jobTitle: input.jobTitle || null } : {}),
         ...(input.avatarUrl !== undefined ? { avatarUrl: input.avatarUrl } : {}),
         ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
         ...(input.globalRole !== undefined ? { globalRole: input.globalRole } : {}),
@@ -274,7 +298,7 @@ export class UsersService {
     }
 
     await this.assertExists(userId);
-    await this.assertNotLastAdmin(userId);
+    await this.assertNotLastProductOwner(userId);
 
     await this.prisma.user.update({
       where: { id: userId },
@@ -310,21 +334,26 @@ export class UsersService {
       });
   }
 
-  /** Garde-fou : la plateforme doit conserver au moins un administrateur actif. */
-  private async assertNotLastAdmin(userId: string): Promise<void> {
+  /** Garde-fou : la plateforme doit conserver au moins un Product Owner actif. */
+  private async assertNotLastProductOwner(userId: string): Promise<void> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { globalRole: true, isActive: true },
     });
-    if (user?.globalRole !== GlobalRole.ADMIN || !user.isActive) return;
+    if (!user || user.globalRole !== GlobalRole.PRODUCT_OWNER || !user.isActive) return;
 
-    const remainingAdmins = await this.prisma.user.count({
-      where: { globalRole: GlobalRole.ADMIN, isActive: true, deletedAt: null, id: { not: userId } },
+    const remainingProductOwners = await this.prisma.user.count({
+      where: {
+        globalRole: GlobalRole.PRODUCT_OWNER,
+        isActive: true,
+        deletedAt: null,
+        id: { not: userId },
+      },
     });
-    if (remainingAdmins === 0) {
+    if (remainingProductOwners === 0) {
       throw new BadRequestException({
-        code: 'LAST_ADMIN',
-        message: 'La plateforme doit conserver au moins un administrateur actif',
+        code: 'LAST_PRODUCT_OWNER',
+        message: 'La plateforme doit conserver au moins un Product Owner actif',
       });
     }
   }
@@ -335,7 +364,7 @@ function toUserSummary(user: UserRow): UserSummary {
     id: user.id,
     email: user.email,
     name: user.name,
-    jobTitle: user.jobTitle,
+    jobTitle: isUserFunction(user.jobTitle) ? user.jobTitle : null,
     avatarUrl: user.avatarUrl,
     globalRole: user.globalRole as GlobalRole,
     isActive: user.isActive,

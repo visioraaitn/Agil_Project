@@ -24,6 +24,7 @@ export const envSchema = z
     API_PORT: z.coerce.number().int().positive().default(3000),
     API_PREFIX: z.string().default('/api/v1'),
     CORS_ORIGIN: z.string().default('http://localhost:5173'),
+    APP_URL: z.string().url().default('http://localhost:5173'),
     RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
     RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
 

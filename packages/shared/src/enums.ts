@@ -6,10 +6,29 @@
  */
 
 export const GlobalRole = {
+  PRODUCT_OWNER: 'PRODUCT_OWNER',
   ADMIN: 'ADMIN',
   MEMBER: 'MEMBER',
 } as const;
 export type GlobalRole = (typeof GlobalRole)[keyof typeof GlobalRole];
+
+/** Fonction professionnelle affichée sur le profil, sans effet sur les permissions. */
+export const UserFunction = {
+  FULL_STACK_DEVELOPER: 'FULL_STACK_DEVELOPER',
+  PRODUCT_OWNER: 'PRODUCT_OWNER',
+  FRONTEND_DEVELOPER: 'FRONTEND_DEVELOPER',
+  BACKEND_DEVELOPER: 'BACKEND_DEVELOPER',
+  AI_DEVELOPER: 'AI_DEVELOPER',
+  CLOUD_DEVOPS: 'CLOUD_DEVOPS',
+  SECURITY: 'SECURITY',
+  INTERN: 'INTERN',
+  CLIENT: 'CLIENT',
+} as const;
+export type UserFunction = (typeof UserFunction)[keyof typeof UserFunction];
+
+export function isUserFunction(value: unknown): value is UserFunction {
+  return typeof value === 'string' && Object.values(UserFunction).includes(value as UserFunction);
+}
 
 export const ProjectRole = {
   PRODUCT_OWNER: 'PRODUCT_OWNER',
@@ -106,6 +125,7 @@ export const EntityType = {
 export type EntityType = (typeof EntityType)[keyof typeof EntityType];
 
 export const NotificationType = {
+  ACCOUNT_CREATED: 'ACCOUNT_CREATED',
   ITEM_ASSIGNED: 'ITEM_ASSIGNED',
   ITEM_STATUS_CHANGED: 'ITEM_STATUS_CHANGED',
   ITEM_COMMENTED: 'ITEM_COMMENTED',
@@ -130,6 +150,17 @@ export const STORY_POINT_SCALE = [1, 2, 3, 5, 8, 13, 21] as const;
 
 /** Libellés FR — l'API renvoie toujours les codes, jamais le texte affiché. */
 export const LABELS_FR = {
+  userFunction: {
+    FULL_STACK_DEVELOPER: 'Développeur full-stack',
+    PRODUCT_OWNER: 'Product Owner',
+    FRONTEND_DEVELOPER: 'Développeur frontend',
+    BACKEND_DEVELOPER: 'Développeur backend',
+    AI_DEVELOPER: 'Développeur IA',
+    CLOUD_DEVOPS: 'Cloud & DevOps',
+    SECURITY: 'Sécurité',
+    INTERN: 'Stagiaire',
+    CLIENT: 'Client',
+  },
   projectRole: {
     PRODUCT_OWNER: 'Product Owner',
     SCRUM_MASTER: 'Scrum Master',

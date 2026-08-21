@@ -1,15 +1,6 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
-import {
-  Bell,
-  ImageUp,
-  KeyRound,
-  LayoutDashboard,
-  Palette,
-  Shield,
-  UserCog,
-  Users,
-} from 'lucide-react';
-import { GlobalRole } from '@visiora/shared';
+import { ImageUp, KeyRound, LayoutDashboard, Palette, Shield, UserCog, Users } from 'lucide-react';
+import { GlobalRole, LABELS_FR, UserFunction } from '@visiora/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/input';
@@ -26,6 +17,12 @@ interface PortalPreferences {
   notifications: boolean;
 }
 
+interface ProfileForm {
+  name: string;
+  email: string;
+  jobTitle: UserFunction | '';
+}
+
 const STORAGE_KEY = 'visiora.portal.preferences';
 const DEFAULT_PREFERENCES: PortalPreferences = {
   density: 'compact',
@@ -34,14 +31,14 @@ const DEFAULT_PREFERENCES: PortalPreferences = {
 };
 
 export function SettingsPage() {
-  const { user, isAdmin, refreshUser, logout } = useAuth();
+  const { user, canManageUsers, refreshUser, logout } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [preferences, setPreferences] = useState<PortalPreferences>(() => readPreferences());
-  const [profile, setProfile] = useState({
+  const [profile, setProfile] = useState<ProfileForm>({
     name: user?.name ?? '',
     email: user?.email ?? '',
-    jobTitle: '',
+    jobTitle: user?.jobTitle ?? '',
   });
   const [passwords, setPasswords] = useState({ currentPassword: '', newPassword: '' });
   const [profileError, setProfileError] = useState<unknown>(null);
@@ -57,7 +54,7 @@ export function SettingsPage() {
     setProfile({
       name: user?.name ?? '',
       email: user?.email ?? '',
-      jobTitle: '',
+      jobTitle: user?.jobTitle ?? '',
     });
   }, [user]);
 
@@ -65,10 +62,12 @@ export function SettingsPage() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
   }, [preferences]);
 
-  const roleLabel = useMemo(
-    () => (user?.globalRole === GlobalRole.ADMIN ? 'Administrateur' : 'Membre'),
-    [user?.globalRole],
-  );
+  const roleLabel = useMemo(() => {
+    if (user?.globalRole === GlobalRole.PRODUCT_OWNER) return 'Product Owner';
+    if (user?.globalRole === GlobalRole.ADMIN) return 'Administrateur';
+    return 'Membre';
+  }, [user?.globalRole]);
+  const functionLabel = user?.jobTitle ? LABELS_FR.userFunction[user.jobTitle] : 'Non renseignée';
 
   const saveProfile = async () => {
     setProfileSaving(true);
@@ -145,7 +144,7 @@ export function SettingsPage() {
             label="Securite"
             onClick={() => navigate('/settings?tab=security')}
           />
-          {isAdmin && (
+          {canManageUsers && (
             <SettingsNavItem
               active={false}
               icon={Users}
@@ -170,7 +169,14 @@ export function SettingsPage() {
                   <h2 className="text-ink-900 truncate text-lg font-semibold">{user?.name}</h2>
                   <p className="text-ink-400 truncate text-sm">{user?.email}</p>
                 </div>
-                <Badge tone={user?.globalRole === GlobalRole.ADMIN ? 'accent' : 'neutral'}>
+                <Badge
+                  tone={
+                    user?.globalRole === GlobalRole.PRODUCT_OWNER ||
+                    user?.globalRole === GlobalRole.ADMIN
+                      ? 'accent'
+                      : 'neutral'
+                  }
+                >
                   {roleLabel}
                 </Badge>
               </header>
@@ -186,6 +192,10 @@ export function SettingsPage() {
                 <div>
                   <dt className="text-ink-400 text-sm">Role plateforme</dt>
                   <dd className="text-ink-900">{roleLabel}</dd>
+                </div>
+                <div>
+                  <dt className="text-ink-400 text-sm">Fonction</dt>
+                  <dd className="text-ink-900">{functionLabel}</dd>
                 </div>
               </dl>
             </section>
@@ -217,13 +227,22 @@ export function SettingsPage() {
                 </label>
                 <label className="flex flex-col gap-1">
                   <span className="text-ink-700 text-sm font-semibold">Fonction</span>
-                  <Input
+                  <Select
                     value={profile.jobTitle}
                     onChange={(event) =>
-                      setProfile((current) => ({ ...current, jobTitle: event.target.value }))
+                      setProfile((current) => ({
+                        ...current,
+                        jobTitle: event.target.value as UserFunction | '',
+                      }))
                     }
-                    placeholder="Ex. Developpeur, Stagiaire, Product Owner"
-                  />
+                  >
+                    <option value="">Non renseignée</option>
+                    {Object.values(UserFunction).map((userFunction) => (
+                      <option key={userFunction} value={userFunction}>
+                        {LABELS_FR.userFunction[userFunction]}
+                      </option>
+                    ))}
+                  </Select>
                 </label>
                 <label className="flex flex-col gap-1 md:col-span-2">
                   <span className="text-ink-700 flex items-center gap-1 text-sm font-semibold">
@@ -314,23 +333,23 @@ export function SettingsPage() {
             <section className="border-border-default bg-surface rounded border">
               <header className="border-border-subtle flex items-center gap-2 border-b px-3 py-2">
                 <Shield className="text-ink-500 size-4" strokeWidth={1.75} />
-                <h2 className="text-ink-900 text-lg font-semibold">Securite</h2>
+                <h2 className="text-ink-900 text-lg font-semibold">Sécurité du compte</h2>
               </header>
               <div className="grid gap-3 px-3 py-3 md:grid-cols-2">
                 <SettingStatus
                   icon={KeyRound}
-                  label="Authentification locale"
-                  value="Active"
+                  label="Protection du compte"
+                  value="Activée"
                   tone="success"
                 />
                 <SettingStatus
-                  icon={Bell}
-                  label="Sessions"
-                  value="Token JWT + refresh cookie"
+                  icon={Shield}
+                  label="Gestion des connexions"
+                  value="Sessions sécurisées"
                   tone="accent"
                 />
               </div>
-              {isAdmin && (
+              {canManageUsers && (
                 <div className="border-border-subtle flex gap-2 border-t px-3 py-3">
                   <Button variant="primary" onClick={() => navigate('/admin/users')}>
                     <Users className="size-3.5" strokeWidth={1.75} />

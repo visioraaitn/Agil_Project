@@ -1,13 +1,18 @@
 import { z } from 'zod';
-import { GlobalRole } from '../enums';
+import { GlobalRole, UserFunction } from '../enums';
 import { passwordSchema } from './auth';
 import { paginationSchema } from './common';
+
+const optionalUserFunctionSchema = z
+  .union([z.nativeEnum(UserFunction), z.literal('')])
+  .nullable()
+  .optional();
 
 export const createUserSchema = z.object({
   email: z.string().email("L'adresse email est invalide").toLowerCase(),
   name: z.string().min(2, 'Le nom doit contenir au moins 2 caractères').max(120),
   password: passwordSchema,
-  jobTitle: z.string().max(120).nullable().optional(),
+  jobTitle: optionalUserFunctionSchema,
   globalRole: z.nativeEnum(GlobalRole).default(GlobalRole.MEMBER),
 });
 export type CreateUserInput = z.infer<typeof createUserSchema>;
@@ -16,7 +21,7 @@ export const updateUserSchema = z
   .object({
     name: z.string().min(2).max(120).optional(),
     email: z.string().email().toLowerCase().optional(),
-    jobTitle: z.string().max(120).nullable().optional(),
+    jobTitle: optionalUserFunctionSchema,
     avatarUrl: z.string().url().nullable().optional(),
     isActive: z.boolean().optional(),
     globalRole: z.nativeEnum(GlobalRole).optional(),
@@ -64,7 +69,7 @@ export interface UserSummary {
   id: string;
   email: string;
   name: string;
-  jobTitle: string | null;
+  jobTitle: UserFunction | null;
   avatarUrl: string | null;
   globalRole: GlobalRole;
   isActive: boolean;

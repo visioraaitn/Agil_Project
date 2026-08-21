@@ -1,16 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
-export type Theme = 'light' | 'dark' | 'system';
+export type Theme = 'light' | 'dark';
 
 export function useTheme() {
   const [theme, setThemeState] = useState<Theme>(() => {
     try {
       const stored = localStorage.getItem('visiora_theme') as Theme | null;
-      if (stored === 'light' || stored === 'dark' || stored === 'system') return stored;
+      if (stored === 'light' || stored === 'dark') return stored;
     } catch {
       // ignore
     }
-    return 'system';
+    return 'light';
   });
 
   const [isDark, setIsDark] = useState<boolean>(() => {
@@ -18,39 +18,13 @@ export function useTheme() {
     const stored = localStorage.getItem('visiora_theme') as Theme | null;
     if (stored === 'dark') return true;
     if (stored === 'light') return false;
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return false;
   });
 
   useEffect(() => {
-    const root = document.documentElement;
-    const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
-
-    const applyTheme = () => {
-      let activeDark = false;
-      if (theme === 'dark') {
-        activeDark = true;
-      } else if (theme === 'light') {
-        activeDark = false;
-      } else {
-        activeDark = systemDark.matches;
-      }
-
-      setIsDark(activeDark);
-      if (activeDark) {
-        root.classList.add('dark');
-      } else {
-        root.classList.remove('dark');
-      }
-    };
-
-    applyTheme();
-
-    const listener = () => {
-      if (theme === 'system') applyTheme();
-    };
-
-    systemDark.addEventListener('change', listener);
-    return () => systemDark.removeEventListener('change', listener);
+    const activeDark = theme === 'dark';
+    setIsDark(activeDark);
+    document.documentElement.classList.toggle('dark', activeDark);
   }, [theme]);
 
   const setTheme = (newTheme: Theme) => {

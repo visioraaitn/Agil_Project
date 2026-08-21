@@ -3,6 +3,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   GlobalRole,
+  LABELS_FR,
+  UserFunction,
   createUserSchema,
   updateUserSchema,
   type CreateUserInput,
@@ -101,7 +103,14 @@ export function UserFormDialog({ open, onClose, user }: UserFormDialogProps) {
         </Field>
 
         <Field label="Fonction" htmlFor="jobTitle" error={fieldErrors.jobTitle?.message}>
-          <Input id="jobTitle" {...register('jobTitle')} />
+          <Select id="jobTitle" {...register('jobTitle')}>
+            <option value="">Non renseignée</option>
+            {Object.values(UserFunction).map((userFunction) => (
+              <option key={userFunction} value={userFunction}>
+                {LABELS_FR.userFunction[userFunction]}
+              </option>
+            ))}
+          </Select>
         </Field>
 
         {!isEdit && (
@@ -126,11 +135,12 @@ export function UserFormDialog({ open, onClose, user }: UserFormDialogProps) {
           label="Rôle plateforme"
           htmlFor="globalRole"
           error={fieldErrors.globalRole?.message}
-          hint="Un administrateur gère les comptes et crée les projets. Les rôles agiles se définissent projet par projet."
+          hint="Seul le Product Owner gère les comptes et attribue les rôles plateforme. Les rôles agiles restent définis projet par projet."
         >
           <Select id="globalRole" {...register('globalRole')}>
             <option value={GlobalRole.MEMBER}>Membre</option>
             <option value={GlobalRole.ADMIN}>Administrateur</option>
+            <option value={GlobalRole.PRODUCT_OWNER}>Product Owner</option>
           </Select>
         </Field>
 

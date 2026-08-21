@@ -1,5 +1,5 @@
 import type { Permission } from '../permissions';
-import type { GlobalRole, ProjectRole } from '../enums';
+import type { GlobalRole, ProjectRole, UserFunction } from '../enums';
 
 /** Enveloppe d'erreur normalisée renvoyée par l'API (AllExceptionsFilter). */
 export interface ApiErrorBody {
@@ -25,6 +25,7 @@ export interface AuthenticatedUser {
   id: string;
   email: string;
   name: string;
+  jobTitle: UserFunction | null;
   avatarUrl: string | null;
   globalRole: GlobalRole;
 }

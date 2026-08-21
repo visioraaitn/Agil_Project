@@ -11,11 +11,17 @@ const USER: AuthenticatedUser = {
   id: 'user-1',
   email: 'dev@visiora.ai',
   name: 'Utilisateur',
+  jobTitle: null,
   avatarUrl: null,
   globalRole: GlobalRole.MEMBER,
 };
 
 const ADMIN: AuthenticatedUser = { ...USER, id: 'admin-1', globalRole: GlobalRole.ADMIN };
+const PRODUCT_OWNER: AuthenticatedUser = {
+  ...USER,
+  id: 'owner-1',
+  globalRole: GlobalRole.PRODUCT_OWNER,
+};
 
 /**
  * Prisma simulé : `role` est le rôle renvoyé pour l'appartenance au projet,
@@ -46,7 +52,9 @@ function makeContext(
 }
 
 function makeGuard(role: ProjectRole | null, permission: Permission | undefined) {
-  const reflector = { getAllAndOverride: jest.fn().mockReturnValue(permission) } as unknown as Reflector;
+  const reflector = {
+    getAllAndOverride: jest.fn().mockReturnValue(permission),
+  } as unknown as Reflector;
   const prisma = fakePrisma(role);
   const guard = new ProjectPermissionGuard(reflector, new ProjectAccessService(prisma));
   return { guard, prisma };
@@ -114,7 +122,7 @@ describe('ProjectPermissionGuard', () => {
     });
   });
 
-  describe("appartenance au projet", () => {
+  describe('appartenance au projet', () => {
     it('refuse un non-membre même sans permission requise', async () => {
       const result = await run(null, undefined);
       expect(result).toBeInstanceOf(ForbiddenException);
@@ -142,8 +150,10 @@ describe('ProjectPermissionGuard', () => {
       await expect(run(null, 'pr:approve', ADMIN)).resolves.toBe(true);
     });
 
-    it('est le seul à pouvoir gérer les comptes', async () => {
-      await expect(run(null, 'user:manage', ADMIN, {})).resolves.toBe(true);
+    it('réserve la gestion des comptes au Product Owner plateforme', async () => {
+      await expect(run(null, 'user:manage', PRODUCT_OWNER, {})).resolves.toBe(true);
+      const adminDenied = await run(null, 'user:manage', ADMIN, {});
+      expect(adminDenied).toBeInstanceOf(ForbiddenException);
       const denied = await run(null, 'user:manage', USER, {});
       expect(denied).toBeInstanceOf(ForbiddenException);
     });

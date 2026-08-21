@@ -146,14 +146,22 @@ export interface AccessContext {
 }
 
 /**
- * Vérifie une permission. L'ADMIN plateforme passe partout : instance interne
- * mono-organisation, il est l'exploitant de la plateforme.
+ * Le Product Owner plateforme gouverne les comptes et tous les projets.
+ * L'administrateur conserve les droits techniques/projet, sans pouvoir gérer
+ * les comptes ni attribuer les rôles plateforme ou projet.
  */
 export function can(ctx: AccessContext, permission: Permission): boolean {
-  if (ctx.globalRole === GlobalRole.ADMIN) return true;
+  if (ctx.globalRole === GlobalRole.PRODUCT_OWNER) return true;
+  if (ctx.globalRole === GlobalRole.ADMIN) {
+    return permission !== 'user:manage' && permission !== 'project:member:manage';
+  }
   if (PLATFORM_PERMISSIONS.includes(permission)) return false;
   if (!ctx.projectRole) return false;
   return ROLE_PERMISSIONS[ctx.projectRole].includes(permission);
+}
+
+export function isPlatformAdministrator(role: GlobalRole): boolean {
+  return role === GlobalRole.PRODUCT_OWNER || role === GlobalRole.ADMIN;
 }
 
 export function canAll(ctx: AccessContext, permissions: readonly Permission[]): boolean {

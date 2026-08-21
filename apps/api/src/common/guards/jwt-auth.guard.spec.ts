@@ -37,7 +37,10 @@ function makeGuard(options: {
   const tokens = {
     verifyAccessToken: jest.fn(() => {
       if (options.verifyThrows) {
-        throw new UnauthorizedException({ code: 'INVALID_TOKEN', message: 'Session expirée ou invalide' });
+        throw new UnauthorizedException({
+          code: 'INVALID_TOKEN',
+          message: 'Session expirée ou invalide',
+        });
       }
       return { sub: ACTIVE_USER.id, email: ACTIVE_USER.email };
     }),
@@ -84,6 +87,7 @@ describe('JwtAuthGuard', () => {
       id: ACTIVE_USER.id,
       email: ACTIVE_USER.email,
       name: ACTIVE_USER.name,
+      jobTitle: null,
       avatarUrl: null,
       globalRole: GlobalRole.MEMBER,
     });

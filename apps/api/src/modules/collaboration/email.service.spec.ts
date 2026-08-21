@@ -188,6 +188,7 @@ describe('EmailService', () => {
           SMTP_USER: 'user',
           SMTP_PASSWORD: 'pass',
           MAIL_FROM: 'no-reply@visiora.ai',
+          APP_URL: 'https://visiora-planner.netlify.app',
         };
         return config[key];
       });
@@ -204,6 +205,13 @@ describe('EmailService', () => {
           to: 'new.user@example.com',
           subject: 'Votre compte VisioraAI Agile',
           text: expect.stringContaining('Mot de passe initial : Initial1234'),
+        }),
+      );
+      expect(mockTransporter.sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining(
+            "Accéder à l'application : https://visiora-planner.netlify.app/login",
+          ),
         }),
       );
     });

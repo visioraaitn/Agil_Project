@@ -22,6 +22,8 @@ services:
         value: 300
       - key: CORS_ORIGIN
         sync: false
+      - key: APP_URL
+        sync: false
       - key: AUTH_COOKIE_SAME_SITE
         value: none
       - key: DATABASE_URL

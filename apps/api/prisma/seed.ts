@@ -22,17 +22,19 @@ async function ensureAdminSeed(): Promise<void> {
   await prisma.user.upsert({
     where: { email: ADMIN_SEED_EMAIL },
     update: {
-      name: 'Admin',
-      globalRole: GlobalRole.ADMIN,
+      name: 'Product Owner',
+      jobTitle: 'PRODUCT_OWNER',
+      globalRole: GlobalRole.PRODUCT_OWNER,
       passwordHash,
       isActive: true,
       deletedAt: null,
     },
     create: {
       email: ADMIN_SEED_EMAIL,
-      name: 'Admin',
+      name: 'Product Owner',
+      jobTitle: 'PRODUCT_OWNER',
       passwordHash,
-      globalRole: GlobalRole.ADMIN,
+      globalRole: GlobalRole.PRODUCT_OWNER,
       isActive: true,
     },
   });
