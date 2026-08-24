@@ -57,28 +57,28 @@ export class RankingService {
     return lastRank ? rankBetween(lastRank, null) : INITIAL_RANK;
   }
 
-  /** Rang de départ d'un ticket créé : en tête de sa liste. */
+  /** Rang de départ d'un ticket créé : à la fin de sa liste. */
   async initialRanks(
     projectId: string,
     parentId: string | null,
     status: string,
   ): Promise<{ rank: string; boardRank: string }> {
-    const [firstBacklog, firstBoard] = await Promise.all([
+    const [lastBacklog, lastBoard] = await Promise.all([
       this.prisma.workItem.findFirst({
         where: { projectId, parentId, deletedAt: null },
-        orderBy: { rank: 'asc' },
+        orderBy: { rank: 'desc' },
         select: { rank: true },
       }),
       this.prisma.workItem.findFirst({
         where: { projectId, status: status as never, deletedAt: null },
-        orderBy: { boardRank: 'asc' },
+        orderBy: { boardRank: 'desc' },
         select: { boardRank: true },
       }),
     ]);
 
     return {
-      rank: firstBacklog ? rankBetween(null, firstBacklog.rank) : INITIAL_RANK,
-      boardRank: firstBoard ? rankBetween(null, firstBoard.boardRank) : INITIAL_RANK,
+      rank: lastBacklog ? rankBetween(lastBacklog.rank, null) : INITIAL_RANK,
+      boardRank: lastBoard ? rankBetween(lastBoard.boardRank, null) : INITIAL_RANK,
     };
   }
 

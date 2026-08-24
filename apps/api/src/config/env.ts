@@ -37,7 +37,7 @@ export const envSchema = z
     CORS_ORIGIN: z.string().default('http://localhost:5173'),
     APP_URL: z.string().url().default('http://localhost:5173'),
     RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
-    RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
+    RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
     LOGIN_RATE_LIMIT_WINDOW_MS: z.coerce
       .number()
       .int()

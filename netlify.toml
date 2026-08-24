@@ -22,6 +22,7 @@
     Permissions-Policy = "accelerometer=(), autoplay=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
     Cross-Origin-Opener-Policy = "same-origin"
     Cross-Origin-Resource-Policy = "same-origin"
+    X-Robots-Tag = "noindex, nofollow, noarchive, nosnippet, noimageindex"
 
 [[headers]]
   for = "/assets/*"

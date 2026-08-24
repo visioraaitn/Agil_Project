@@ -21,6 +21,12 @@ export default defineConfig(({ command, mode }) => {
       port: 5173,
       strictPort: false,
     },
+    build: {
+      // Le bundle reste necessairement telechargeable par le navigateur, mais aucune
+      // source map de production ne doit publier les sources TypeScript originales.
+      sourcemap: false,
+      minify: 'esbuild',
+    },
     // Le .env est à la racine du monorepo, partagé avec l'API.
     envDir: '../../',
   };

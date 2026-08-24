@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { createRateLimitMiddleware } from './common/middleware/rate-limit.middleware';
@@ -42,6 +43,15 @@ async function bootstrap(): Promise<void> {
 
   app.setGlobalPrefix(prefix);
   app.use(helmet());
+  app.use((_request: Request, response: Response, next: NextFunction) => {
+    // Les donnees de l'API sont privees : pas d'indexation ni de cache navigateur/intermediaire.
+    response.setHeader(
+      'X-Robots-Tag',
+      'noindex, nofollow, noarchive, nosnippet, noimageindex',
+    );
+    response.setHeader('Cache-Control', 'no-store');
+    next();
+  });
   app.enableCors({
     origin: allowedOrigins,
     credentials: true,

@@ -65,6 +65,16 @@ describe('RankingService', () => {
     expect(rank).toBe(INITIAL_RANK);
   });
 
+  it('ajoute un nouveau ticket apres le dernier ticket existant', async () => {
+    const last: FakeItem = { id: 'z', rank: 'p', boardRank: 'q' };
+    const service = new RankingService(fakePrisma([], last));
+
+    const ranks = await service.initialRanks(PROJECT_ID, null, 'TODO');
+
+    expect(ranks.rank > last.rank).toBe(true);
+    expect(ranks.boardRank > last.boardRank).toBe(true);
+  });
+
   it('refuse des voisins inversés plutôt que de produire un ordre incohérent', async () => {
     const items: FakeItem[] = [
       { id: 'a', rank: 'z', boardRank: 'z' },

@@ -19,7 +19,7 @@ services:
       - key: RATE_LIMIT_WINDOW_MS
         value: 60000
       - key: RATE_LIMIT_MAX
-        value: 300
+        value: 120
       - key: LOGIN_RATE_LIMIT_WINDOW_MS
         value: 900000
       - key: LOGIN_RATE_LIMIT_MAX
