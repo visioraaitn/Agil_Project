@@ -65,6 +65,32 @@ export function useUpdateProject(projectRef: string) {
   });
 }
 
+export function useProjectDocuments(projectRef: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.projectDocuments(projectRef ?? ''),
+    queryFn: () => projectsApi.listDocuments(projectRef as string),
+    enabled: Boolean(projectRef),
+  });
+}
+
+export function useUploadProjectDocument(projectRef: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => projectsApi.uploadDocument(projectRef, file),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.projectDocuments(projectRef) }),
+  });
+}
+
+export function useDeleteProjectDocument(projectRef: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (documentId: string) => projectsApi.deleteDocument(projectRef, documentId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.projectDocuments(projectRef) }),
+  });
+}
+
 export function useProjectMembers(projectRef: string | undefined) {
   return useQuery({
     queryKey: queryKeys.projectMembers(projectRef ?? ''),

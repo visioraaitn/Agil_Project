@@ -46,23 +46,24 @@ model User {
   updatedAt    DateTime   @updatedAt
   deletedAt    DateTime? // A.1 · suppression logique (préserve l'historique)
 
-  memberships       ProjectMember[]
-  createdProjects   Project[]                @relation("ProjectCreator")
-  assignedItems     WorkItem[]               @relation("WorkItemAssignee")
-  reportedItems     WorkItem[]               @relation("WorkItemReporter")
-  comments          Comment[]
-  attachments       Attachment[]
-  activities        ActivityLog[]
-  notifications     Notification[]
-  notificationPrefs NotificationPreference[]
-  sessions          Session[]
-  declaredPRs       PullRequest[]            @relation("PullRequestAuthor")
-  reviewedPRs       PullRequest[]            @relation("PullRequestReviewer")
-  mergedPRs         PullRequest[]            @relation("PullRequestMerger")
-  prEvents          PullRequestEvent[]
-  prComments        PullRequestComment[]
-  retroItems        RetrospectiveItem[]
-  createdBranches   Branch[]
+  memberships              ProjectMember[]
+  createdProjects          Project[]                @relation("ProjectCreator")
+  assignedItems            WorkItem[]               @relation("WorkItemAssignee")
+  reportedItems            WorkItem[]               @relation("WorkItemReporter")
+  comments                 Comment[]
+  attachments              Attachment[]
+  uploadedProjectDocuments ProjectDocument[]
+  activities               ActivityLog[]
+  notifications            Notification[]
+  notificationPrefs        NotificationPreference[]
+  sessions                 Session[]
+  declaredPRs              PullRequest[]            @relation("PullRequestAuthor")
+  reviewedPRs              PullRequest[]            @relation("PullRequestReviewer")
+  mergedPRs                PullRequest[]            @relation("PullRequestMerger")
+  prEvents                 PullRequestEvent[]
+  prComments               PullRequestComment[]
+  retroItems               RetrospectiveItem[]
+  createdBranches          Branch[]
 
   @@index([email])
   @@index([isActive])
@@ -114,7 +115,7 @@ model Project {
   updatedAt      DateTime      @updatedAt
   archivedAt     DateTime?
 
-  createdBy     User            @relation("ProjectCreator", fields: [createdById], references: [id])
+  createdBy     User              @relation("ProjectCreator", fields: [createdById], references: [id])
   members       ProjectMember[]
   repositories  Repository[]
   workItems     WorkItem[]
@@ -123,6 +124,7 @@ model Project {
   milestones    Milestone[]
   activities    ActivityLog[]
   notifications Notification[]
+  documents     ProjectDocument[]
 
   @@index([status])
 }
@@ -441,6 +443,24 @@ model Attachment {
   uploadedBy User     @relation(fields: [uploadedById], references: [id])
 
   @@index([workItemId])
+}
+
+/// Documents PDF rattachés au projet, consultables par tous ses membres.
+model ProjectDocument {
+  id           String   @id @default(uuid())
+  projectId    String
+  fileName     String
+  mimeType     String   @default("application/pdf")
+  sizeBytes    Int
+  storageKey   String   @unique
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploadedBy User    @relation(fields: [uploadedById], references: [id])
+
+  @@index([projectId, createdAt])
+  @@index([uploadedById])
 }
 
 // ===========================================================================

@@ -14,6 +14,7 @@ export const PERMISSIONS = [
   'user:manage',
   'project:create',
   'project:delete',
+  'project:document:manage',
 
   // Projet
   'project:update',
@@ -137,6 +138,7 @@ export const PLATFORM_PERMISSIONS: readonly Permission[] = [
   'user:manage',
   'project:create',
   'project:delete',
+  'project:document:manage',
 ];
 
 export interface AccessContext {

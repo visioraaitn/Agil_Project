@@ -6,6 +6,7 @@ export * from './dto/auth';
 export * from './dto/attachment';
 export * from './dto/user';
 export * from './dto/project';
+export * from './dto/project-document';
 export * from './dto/work-item';
 export * from './dto/label';
 export * from './dto/sprint';

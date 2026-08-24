@@ -27,6 +27,7 @@ export const queryKeys = {
   project: (projectId: string) => ['projects', projectId] as const,
   projectAccess: (projectId: string) => ['projects', projectId, 'access'] as const,
   projectMembers: (projectId: string) => ['projects', projectId, 'members'] as const,
+  projectDocuments: (projectId: string) => ['projects', projectId, 'documents'] as const,
   backlog: (projectId: string) => ['projects', projectId, 'backlog'] as const,
   board: (projectId: string, sprintId?: string) =>
     ['projects', projectId, 'board', sprintId ?? 'active'] as const,

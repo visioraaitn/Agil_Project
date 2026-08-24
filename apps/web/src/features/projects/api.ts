@@ -4,12 +4,15 @@ import type {
   ListProjectsQuery,
   Paginated,
   ProjectAccess,
+  ProjectDocumentSummary,
   ProjectMemberSummary,
   ProjectSummary,
   UpdateProjectInput,
   UpdateProjectMemberInput,
 } from '@visiora/shared';
-import { api } from '@/lib/api-client';
+import { api, getAccessToken } from '@/lib/api-client';
+
+const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1';
 
 export const projectsApi = {
   list: (query: Partial<ListProjectsQuery> = {}) =>
@@ -46,4 +49,29 @@ export const projectsApi = {
 
   removeMember: (projectRef: string, userId: string) =>
     api.delete<void>(`/projects/${projectRef}/members/${userId}`),
+
+  listDocuments: (projectRef: string) =>
+    api.get<ProjectDocumentSummary[]>(`/projects/${projectRef}/documents`),
+
+  uploadDocument: (projectRef: string, file: File) => {
+    const form = new FormData();
+    form.set('file', file);
+    return api.post<ProjectDocumentSummary>(`/projects/${projectRef}/documents`, form);
+  },
+
+  deleteDocument: (projectRef: string, documentId: string) =>
+    api.delete<void>(`/projects/${projectRef}/documents/${documentId}`),
+
+  downloadDocument: async (projectRef: string, documentId: string) => {
+    const token = getAccessToken();
+    const response = await fetch(
+      `${API_BASE}/projects/${projectRef}/documents/${documentId}/download`,
+      {
+        credentials: 'include',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      },
+    );
+    if (!response.ok) throw new Error('Téléchargement impossible');
+    return response.blob();
+  },
 };

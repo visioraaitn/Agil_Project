@@ -12,14 +12,18 @@ export const projectKeySchema = z
   .regex(/^[A-Z][A-Z0-9]*$/, 'La clé doit commencer par une lettre (A-Z, 0-9 ensuite)');
 
 const isoDate = z.coerce.date();
+const optionalIsoDate = z.preprocess(
+  (value) => (value === '' || value === undefined ? null : value),
+  isoDate.nullable(),
+);
 
 export const createProjectSchema = z.object({
   key: projectKeySchema,
   name: z.string().min(2, 'Le nom doit contenir au moins 2 caractères').max(160),
   description: z.string().max(2000).nullable().optional(),
   company: z.string().max(160).nullable().optional(),
-  startDate: isoDate.nullable().optional(),
-  targetDate: isoDate.nullable().optional(),
+  startDate: optionalIsoDate.optional(),
+  targetDate: optionalIsoDate.optional(),
   color: z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, 'La couleur doit être au format #RRGGBB')
@@ -35,10 +39,10 @@ export const updateProjectSchema = createProjectSchema
   .refine((value) => Object.keys(value).length > 0, {
     message: 'Aucun champ à mettre à jour',
   })
-  .refine(
-    (value) => !value.startDate || !value.targetDate || value.startDate <= value.targetDate,
-    { message: 'La date de fin doit être postérieure à la date de début', path: ['targetDate'] },
-  );
+  .refine((value) => !value.startDate || !value.targetDate || value.startDate <= value.targetDate, {
+    message: 'La date de fin doit être postérieure à la date de début',
+    path: ['targetDate'],
+  });
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 
 export const listProjectsQuerySchema = paginationSchema.extend({

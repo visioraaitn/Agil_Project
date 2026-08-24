@@ -1,8 +1,13 @@
+import { useState } from 'react';
+import { Pencil } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { LABELS_FR, ProjectStatus } from '@visiora/shared';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { ErrorState, LoadingState } from '@/components/common/StateMessage';
 import { MembersPanel } from '../components/MembersPanel';
+import { ProjectDeadlineDialog } from '../components/ProjectDeadlineDialog';
+import { ProjectDocumentsPanel } from '../components/ProjectDocumentsPanel';
 import { useProject, useProjectPermissions } from '../hooks';
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {
@@ -23,6 +28,7 @@ function formatDate(iso: string | null): string {
 
 /** B.1 · Détails du projet et affectation des utilisateurs. */
 export function ProjectOverviewPage() {
+  const [deadlineOpen, setDeadlineOpen] = useState(false);
   const { projectKey } = useParams<{ projectKey: string }>();
   const { data: project, isLoading, error } = useProject(projectKey);
   const { can, role } = useProjectPermissions(projectKey);
@@ -76,7 +82,19 @@ export function ProjectOverviewPage() {
               </div>
               <div>
                 <dt className="text-ink-400 text-sm">Échéance</dt>
-                <dd className="text-ink-900">{formatDate(project.targetDate)}</dd>
+                <dd className="text-ink-900 flex items-center gap-1">
+                  {formatDate(project.targetDate)}
+                  {can('project:update') && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label="Modifier l’échéance"
+                      onClick={() => setDeadlineOpen(true)}
+                    >
+                      <Pencil className="size-3.5" strokeWidth={1.75} />
+                    </Button>
+                  )}
+                </dd>
               </div>
               <div className="col-span-2">
                 <dt className="text-ink-400 text-sm">Description</dt>
@@ -86,6 +104,11 @@ export function ProjectOverviewPage() {
               </div>
             </dl>
           </section>
+
+          <ProjectDocumentsPanel
+            projectRef={projectKey}
+            canManage={can('project:document:manage')}
+          />
 
           <section className="border-border-default bg-surface rounded border">
             <header className="border-border-subtle border-b px-3 py-2">
@@ -99,6 +122,13 @@ export function ProjectOverviewPage() {
 
         <MembersPanel projectRef={projectKey} canManage={can('project:member:manage')} />
       </div>
+
+      <ProjectDeadlineDialog
+        projectRef={projectKey}
+        currentTargetDate={project.targetDate}
+        open={deadlineOpen}
+        onClose={() => setDeadlineOpen(false)}
+      />
     </div>
   );
 }
