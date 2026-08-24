@@ -9,7 +9,12 @@ import {
   WorkItemType,
 } from '@visiora/shared';
 import { PrismaService } from '../../prisma/prisma.service';
-import { WORK_ITEM_SUMMARY_SELECT, toWorkItemSummary, workItemKey } from '../work-items/work-item.mapper';
+import {
+  WORK_ITEM_KEY_SELECT,
+  WORK_ITEM_SUMMARY_SELECT,
+  toWorkItemSummary,
+  workItemKey,
+} from '../work-items/work-item.mapper';
 
 @Injectable()
 export class ReportsService {
@@ -100,7 +105,14 @@ export class ReportsService {
       }),
       this.prisma.workItem.findMany({
         where: { projectId, deletedAt: null, dueDate: { not: null } },
-        select: { id: true, number: true, title: true, dueDate: true, status: true, project: { select: { key: true } } },
+        select: {
+          ...WORK_ITEM_KEY_SELECT,
+          id: true,
+          title: true,
+          dueDate: true,
+          status: true,
+          project: { select: { key: true } },
+        },
         orderBy: { dueDate: 'asc' },
         take: 100,
       }),
@@ -126,7 +138,7 @@ export class ReportsService {
       ...workItems.map((item) => ({
         id: item.id,
         type: 'WORK_ITEM' as const,
-        title: `${workItemKey(item.project.key, item.number)} · ${item.title}`,
+        title: `${workItemKey(item.project.key, item)} · ${item.title}`,
         start: item.dueDate?.toISOString() ?? new Date().toISOString(),
         end: null,
         status: item.status as WorkItemStatus,
@@ -153,7 +165,13 @@ export class ReportsService {
             { description: { contains: query, mode: 'insensitive' } },
           ],
         },
-        select: { id: true, number: true, title: true, status: true, project: { select: { key: true } } },
+        select: {
+          ...WORK_ITEM_KEY_SELECT,
+          id: true,
+          title: true,
+          status: true,
+          project: { select: { key: true } },
+        },
         take: 12,
       }),
       this.prisma.sprint.findMany({
@@ -193,7 +211,7 @@ export class ReportsService {
       ...workItems.map((item) => ({
         id: item.id,
         type: 'WORK_ITEM' as const,
-        title: `${workItemKey(item.project.key, item.number)} · ${item.title}`,
+        title: `${workItemKey(item.project.key, item)} · ${item.title}`,
         subtitle: 'Ticket',
         url: `/projects/${item.project.key}/backlog`,
         projectKey: item.project.key,

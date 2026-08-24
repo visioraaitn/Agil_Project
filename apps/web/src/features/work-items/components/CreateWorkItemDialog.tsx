@@ -16,6 +16,7 @@ import { Input, Select, Textarea } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { InlineError } from '@/components/common/StateMessage';
 import { useProjectMembers } from '@/features/projects/hooks';
+import { useSprints } from '@/features/sprints/hooks';
 import { useCreateWorkItem } from '../hooks';
 
 interface CreateWorkItemDialogProps {
@@ -43,15 +44,18 @@ export function CreateWorkItemDialog({
 }: CreateWorkItemDialogProps) {
   const createItem = useCreateWorkItem(projectRef);
   const { data: members } = useProjectMembers(projectRef);
-  const [form, setForm] = useState(() => emptyForm(defaultType, defaultParentId));
+  const { data: sprints } = useSprints(projectRef);
+  const [form, setForm] = useState(() =>
+    emptyForm(defaultType, defaultParentId, defaultSprintId),
+  );
   const [submitError, setSubmitError] = useState<unknown>(null);
 
   useEffect(() => {
     if (open) {
-      setForm(emptyForm(defaultType, defaultParentId));
+      setForm(emptyForm(defaultType, defaultParentId, defaultSprintId));
       setSubmitError(null);
     }
-  }, [open, defaultType, defaultParentId]);
+  }, [open, defaultType, defaultParentId, defaultSprintId]);
 
   const allowedParents = ALLOWED_PARENT_TYPES[form.type];
   const parentOptions = flatten(candidates).filter((node) => allowedParents.includes(node.type));
@@ -68,7 +72,7 @@ export function CreateWorkItemDialog({
       storyPoints: form.storyPoints === '' ? null : Number(form.storyPoints),
       assigneeId: form.assigneeId || null,
       status: defaultStatus,
-      sprintId: defaultSprintId ?? undefined,
+      sprintId: form.type === WorkItemType.EPIC ? null : form.sprintId || null,
     };
 
     try {
@@ -108,7 +112,13 @@ export function CreateWorkItemDialog({
               value={form.type}
               onChange={(event) =>
                 // Changer de type peut invalider le parent choisi : on le remet à zéro.
-                setForm({ ...form, type: event.target.value as WorkItemType, parentId: '' })
+                setForm({
+                  ...form,
+                  type: event.target.value as WorkItemType,
+                  parentId: '',
+                  sprintId:
+                    event.target.value === WorkItemType.EPIC ? '' : form.sprintId,
+                })
               }
             >
               {Object.values(WorkItemType).map((type) => (
@@ -200,6 +210,23 @@ export function CreateWorkItemDialog({
               ))}
             </Select>
           </Field>
+
+          {form.type !== WorkItemType.EPIC && (
+            <Field label="Sprint" htmlFor="new-sprint">
+              <Select
+                id="new-sprint"
+                value={form.sprintId}
+                onChange={(event) => setForm({ ...form, sprintId: event.target.value })}
+              >
+                <option value="">Backlog (aucun sprint)</option>
+                {(sprints ?? []).map((sprint) => (
+                  <option key={sprint.id} value={sprint.id}>
+                    {sprint.name} · {LABELS_FR.sprintStatus[sprint.status]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
         </div>
 
         <Field label="Description" htmlFor="new-description">
@@ -225,9 +252,14 @@ interface WorkItemForm {
   priority: Priority;
   storyPoints: string;
   assigneeId: string;
+  sprintId: string;
 }
 
-function emptyForm(type: WorkItemType, parentId: string | null): WorkItemForm {
+function emptyForm(
+  type: WorkItemType,
+  parentId: string | null,
+  sprintId: string | null | undefined,
+): WorkItemForm {
   return {
     type,
     title: '',
@@ -236,6 +268,7 @@ function emptyForm(type: WorkItemType, parentId: string | null): WorkItemForm {
     priority: Priority.MEDIUM,
     storyPoints: '',
     assigneeId: '',
+    sprintId: sprintId ?? '',
   };
 }
 

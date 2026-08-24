@@ -103,7 +103,7 @@ export function CreateProjectDialog({ open, onClose, onCreated }: CreateProjectD
           label="Clé du projet"
           htmlFor="key"
           error={errors.key?.message}
-          hint="2 à 10 caractères — préfixe des tickets, ex. VIS-142"
+          hint="2 à 10 caractères — préfixe des tickets, ex. VIS-1-2"
           required
         >
           <Input

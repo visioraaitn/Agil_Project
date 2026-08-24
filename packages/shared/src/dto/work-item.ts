@@ -61,6 +61,8 @@ export const updateWorkItemSchema = z
     status: z.nativeEnum(WorkItemStatus).optional(),
     priority: z.nativeEnum(Priority).optional(),
     storyPoints: z.number().int().min(0).max(100).nullable().optional(),
+    /** Permet de rattacher ou detacher une story/bug apres sa creation. */
+    parentId: uuidSchema.nullable().optional(),
     assigneeId: uuidSchema.nullable().optional(),
     sprintId: uuidSchema.nullable().optional(),
     labelIds: z.array(uuidSchema).max(20).optional(),
@@ -128,7 +130,7 @@ export interface AcceptanceCriterionSummary {
 
 export interface WorkItemSummary {
   id: string;
-  /** Identifiant lisible : « VIS-142 ». */
+  /** Identifiant hiérarchique lisible : « VIS-1 » ou « VIS-1-2 ». */
   key: string;
   number: number;
   projectId: string;

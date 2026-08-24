@@ -140,21 +140,18 @@ export class WorkItemsService {
       targetStatus,
     );
 
-    /**
-     * Numéro et création dans une seule transaction : deux créations simultanées
-     * ne peuvent pas produire le même « VIS-142 ».
-     */
-    const created = await this.prisma.$transaction(async (tx) => {
-      const project = await tx.project.update({
-        where: { id: projectId },
-        data: { lastItemNumber: { increment: 1 } },
-        select: { lastItemNumber: true },
-      });
-
+    /** Le numero est alloue dans la portee type/parent avec protection concurrente. */
+    const created = await this.numberedTransaction(async (tx) => {
+      const number = await this.nextAvailableNumber(
+        tx,
+        projectId,
+        input.type,
+        input.parentId ?? null,
+      );
       return tx.workItem.create({
         data: {
           projectId,
-          number: project.lastItemNumber,
+          number,
           type: input.type,
           title: input.title,
           status: targetStatus,
@@ -189,16 +186,35 @@ export class WorkItemsService {
   ): Promise<WorkItemDetail> {
     const existing = await this.prisma.workItem.findFirst({
       where: { id: itemId, projectId, deletedAt: null },
-      select: { id: true, status: true },
+      select: { id: true, type: true, status: true, parentId: true },
     });
     if (!existing) throw this.notFound();
+
+    const changesParent = input.parentId !== undefined && input.parentId !== existing.parentId;
+    const targetParentId = input.parentId !== undefined ? input.parentId : existing.parentId;
+    if (changesParent) {
+      await this.assertHierarchy(projectId, existing.type as WorkItemType, targetParentId);
+      await this.assertNoCycle(itemId, targetParentId);
+    }
 
     await this.assertReferences(projectId, input.assigneeId, input.sprintId, input.labelIds);
 
     const closesNow = input.status === WorkItemStatus.DONE && existing.status !== WorkItemStatus.DONE;
     const reopens = input.status !== undefined && input.status !== WorkItemStatus.DONE;
+    const targetRank = changesParent
+      ? await this.ranking.computeRank('rank', {}, { projectId, parentId: targetParentId })
+      : undefined;
 
-    await this.prisma.$transaction(async (tx) => {
+    const updateInTransaction = async (tx: Prisma.TransactionClient) => {
+      const number = changesParent
+        ? await this.nextAvailableNumber(
+            tx,
+            projectId,
+            existing.type as WorkItemType,
+            targetParentId,
+          )
+        : undefined;
+
       await tx.workItem.update({
         where: { id: itemId },
         data: {
@@ -216,6 +232,13 @@ export class WorkItemsService {
             'isBlocked',
             'blockedReason',
           ]),
+          ...(changesParent
+            ? {
+                number,
+                parentId: targetParentId,
+                rank: targetRank,
+              }
+            : {}),
           ...(closesNow ? { closedAt: new Date() } : {}),
           ...(reopens ? { closedAt: null } : {}),
         },
@@ -246,7 +269,10 @@ export class WorkItemsService {
           });
         }
       }
-    });
+    };
+
+    if (changesParent) await this.numberedTransaction(updateInTransaction);
+    else await this.prisma.$transaction(updateInTransaction);
 
     return this.getById(projectId, itemId);
   }
@@ -263,8 +289,9 @@ export class WorkItemsService {
     });
     if (!item) throw this.notFound();
 
-    const changesParent = input.parentId !== undefined;
-    const targetParentId = changesParent ? (input.parentId ?? null) : item.parentId;
+    const parentProvided = input.parentId !== undefined;
+    const targetParentId = parentProvided ? (input.parentId ?? null) : item.parentId;
+    const changesParent = parentProvided && targetParentId !== item.parentId;
 
     if (changesParent) {
       await this.assertHierarchy(projectId, item.type as WorkItemType, targetParentId);
@@ -307,7 +334,19 @@ export class WorkItemsService {
       data.sprint = input.sprintId ? { connect: { id: input.sprintId } } : { disconnect: true };
     }
 
-    await this.prisma.workItem.update({ where: { id: itemId }, data });
+    if (changesParent) {
+      await this.numberedTransaction(async (tx) => {
+        const number = await this.nextAvailableNumber(
+          tx,
+          projectId,
+          item.type as WorkItemType,
+          targetParentId,
+        );
+        await tx.workItem.update({ where: { id: itemId }, data: { ...data, number } });
+      });
+    } else {
+      await this.prisma.workItem.update({ where: { id: itemId }, data });
+    }
 
     const row = await this.prisma.workItem.findUniqueOrThrow({
       where: { id: itemId },
@@ -354,6 +393,41 @@ export class WorkItemsService {
           }
         : {}),
     };
+  }
+
+  /** Retourne le premier entier positif libre dans une portee de numerotation. */
+  private async nextAvailableNumber(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    type: WorkItemType,
+    parentId: string | null,
+  ): Promise<number> {
+    const rows = await tx.workItem.findMany({
+      where: { projectId, type, parentId, deletedAt: null },
+      select: { number: true },
+      orderBy: { number: 'asc' },
+    });
+    return smallestAvailableNumber(rows.map((row) => row.number));
+  }
+
+  /** Transactions serialisables avec rejeu des rares conflits concurrents. */
+  private async numberedTransaction<T>(
+    operation: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    const maxAttempts = 4;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await this.prisma.$transaction(operation, {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        });
+      } catch (error) {
+        const retryable =
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          (error.code === 'P2002' || error.code === 'P2034');
+        if (!retryable || attempt === maxAttempts) throw error;
+      }
+    }
+    throw new Error('Transaction de numerotation impossible');
   }
 
   /** Agrège les descendants directs de chaque ticket de la liste fournie. */
@@ -513,4 +587,15 @@ function pick<T extends object, K extends keyof T>(
     if (source[key] !== undefined) result[key] = source[key];
   }
   return result;
+}
+
+/** Premier entier strictement positif absent d'une liste, sans supposer sa continuite. */
+export function smallestAvailableNumber(numbers: readonly number[]): number {
+  let candidate = 1;
+  for (const number of [...numbers].sort((left, right) => left - right)) {
+    if (number < candidate) continue;
+    if (number > candidate) break;
+    candidate += 1;
+  }
+  return candidate;
 }

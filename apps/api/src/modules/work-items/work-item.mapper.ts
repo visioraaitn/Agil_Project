@@ -6,15 +6,26 @@ import type {
   WorkItemDetail,
   WorkItemStatus,
   WorkItemSummary,
-  WorkItemType,
 } from '@visiora/shared';
+import { WorkItemType } from '@visiora/shared';
+
+export const WORK_ITEM_KEY_SELECT = {
+  number: true,
+  type: true,
+  parent: {
+    select: {
+      number: true,
+      type: true,
+      parent: { select: { number: true, type: true } },
+    },
+  },
+} satisfies Prisma.WorkItemSelect;
 
 /** Colonnes nécessaires à la forme « résumé » d'un ticket. */
 export const WORK_ITEM_SUMMARY_SELECT = {
+  ...WORK_ITEM_KEY_SELECT,
   id: true,
-  number: true,
   projectId: true,
-  type: true,
   title: true,
   status: true,
   priority: true,
@@ -43,7 +54,15 @@ export const WORK_ITEM_DETAIL_SELECT = {
   description: true,
   technicalNotes: true,
   reporter: { select: { id: true, name: true, email: true, avatarUrl: true } },
-  parent: { select: { id: true, number: true, title: true, type: true } },
+  parent: {
+    select: {
+      id: true,
+      number: true,
+      title: true,
+      type: true,
+      parent: { select: { number: true, type: true } },
+    },
+  },
   acceptanceCriteria: {
     where: {},
     select: { id: true, content: true, isMet: true, position: true },
@@ -64,8 +83,33 @@ export interface ChildAggregate {
 
 const EMPTY_AGGREGATE: ChildAggregate = { childCount: 0, doneChildCount: 0, rolledUpPoints: 0 };
 
-export function workItemKey(projectKey: string, number: number): string {
-  return `${projectKey}-${number}`;
+export interface WorkItemKeyNode {
+  number: number;
+  type: WorkItemType | string;
+  parent?: WorkItemKeyNode | null;
+}
+
+/**
+ * Construit une reference hierarchique sans ambiguite :
+ * epic VIS-1, story VIS-1-2, bug VIS-1-B1 et sous-tache VIS-1-2-T1.
+ * Une story encore sans epic reste identifiable sous la forme VIS-US-1.
+ */
+export function workItemKey(projectKey: string, item: WorkItemKeyNode): string {
+  const ancestors: WorkItemKeyNode[] = [];
+  let cursor: WorkItemKeyNode | null | undefined = item;
+  while (cursor) {
+    ancestors.unshift(cursor);
+    cursor = cursor.parent;
+  }
+
+  const parts = ancestors.map((node, index) => {
+    if (node.type === WorkItemType.BUG) return `B${node.number}`;
+    if (node.type === WorkItemType.SUBTASK) return `T${node.number}`;
+    if (node.type === WorkItemType.STORY && index === 0) return `US-${node.number}`;
+    return String(node.number);
+  });
+
+  return `${projectKey}-${parts.join('-')}`;
 }
 
 function toLabels(row: { labels: { label: LabelSummary }[] }): LabelSummary[] {
@@ -78,7 +122,7 @@ export function toWorkItemSummary(
 ): WorkItemSummary {
   return {
     id: row.id,
-    key: workItemKey(row.project.key, row.number),
+    key: workItemKey(row.project.key, row),
     number: row.number,
     projectId: row.projectId,
     type: row.type as WorkItemType,
@@ -134,7 +178,7 @@ export function toWorkItemDetail(
     parent: row.parent
       ? {
           id: row.parent.id,
-          key: workItemKey(row.project.key, row.parent.number),
+          key: workItemKey(row.project.key, row.parent),
           title: row.parent.title,
           type: row.parent.type as WorkItemType,
         }

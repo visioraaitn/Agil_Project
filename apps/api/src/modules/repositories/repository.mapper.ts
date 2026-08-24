@@ -9,7 +9,7 @@ import type {
   PullRequestSummary,
   RepositorySummary,
 } from '@visiora/shared';
-import { workItemKey } from '../work-items/work-item.mapper';
+import { WORK_ITEM_KEY_SELECT, workItemKey } from '../work-items/work-item.mapper';
 
 export const USER_SELECT = {
   id: true,
@@ -63,7 +63,14 @@ export const PULL_REQUEST_SELECT = {
   mergedAt: true,
   createdAt: true,
   updatedAt: true,
-  workItem: { select: { id: true, number: true, title: true, project: { select: { key: true } } } },
+  workItem: {
+    select: {
+      ...WORK_ITEM_KEY_SELECT,
+      id: true,
+      title: true,
+      project: { select: { key: true } },
+    },
+  },
   repository: { select: { id: true, name: true, provider: true, url: true } },
   sourceBranch: { select: BRANCH_SELECT },
   targetBranch: { select: BRANCH_SELECT },
@@ -141,7 +148,7 @@ export function toPullRequestSummary(row: PullRequestRow): PullRequestSummary {
     number: row.number,
     workItem: {
       id: row.workItem.id,
-      key: workItemKey(row.workItem.project.key, row.workItem.number),
+      key: workItemKey(row.workItem.project.key, row.workItem),
       title: row.workItem.title,
     },
     repository: {

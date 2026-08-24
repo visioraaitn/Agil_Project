@@ -113,11 +113,11 @@ Lire en début de session : [`docs/01-architecture-et-plan.md`](docs/01-architec
 - **Étiquettes et critères d'acceptation se remplacent en bloc** (`labelIds`,
   `acceptanceCriteria` dans le PATCH) : le client envoie l'état voulu, pas un diff.
 - **L'assigné doit être membre du projet** — sinon 400 `ASSIGNEE_NOT_MEMBER`.
-- **Numérotation `VIS-142`** : `project.lastItemNumber` est incrémenté dans la même
-  transaction que la création, deux créations simultanées ne peuvent pas collisionner.
+- **Numérotation hiérarchique** : epic `VIS-1`, stories `VIS-1-1`, `VIS-1-2`.
+  Le premier numéro libre est réutilisé par portée type/parent, dans une transaction sérialisable.
 - **Suppression = soft delete en cascade** sur toute la descendance.
 - Le glisser-déposer du backlog reprioorise **entre frères uniquement** ; changer de parent
-  se fait explicitement (sélecteur « Rattacher à » à la création).
+  se fait explicitement avec le sélecteur « Epic / parent » à la création ou dans le détail.
 
 ## Conventions front (phase 1)
 

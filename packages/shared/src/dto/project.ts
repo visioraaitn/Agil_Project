@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { ProjectRole, ProjectStatus } from '../enums';
 import { paginationSchema, uuidSchema } from './common';
 
-/** Clé courte affichée dans les identifiants de tickets : VIS-142. */
+/** Clé courte affichée dans les identifiants de tickets : VIS-1-2. */
 export const projectKeySchema = z
   .string()
   .trim()

@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Plus, Trash2, X } from 'lucide-react';
 import {
+  ALLOWED_PARENT_TYPES,
   LABELS_FR,
   Priority,
+  REQUIRES_PARENT,
   STORY_POINT_SCALE,
   WorkItemStatus,
   WorkItemType,
   type AcceptanceCriterionInput,
+  type BacklogNode,
   type UpdateWorkItemInput,
   type WorkItemDetail,
 } from '@visiora/shared';
@@ -22,9 +25,17 @@ import { collaborationApi } from '@/features/collaboration/api';
 import { AttachmentsPanel } from '@/features/collaboration/components/AttachmentsPanel';
 import { CommentsPanel } from '@/features/collaboration/components/CommentsPanel';
 import { useProjectMembers, useProjectPermissions } from '@/features/projects/hooks';
+import { useSprints } from '@/features/sprints/hooks';
 import { AcceptanceCriteriaEditor } from './AcceptanceCriteriaEditor';
 import { StatusPill, TypeIcon } from './WorkItemChrome';
-import { useCreateWorkItem, useDeleteWorkItem, useLabels, useUpdateWorkItem, useWorkItem } from '../hooks';
+import {
+  useBacklog,
+  useCreateWorkItem,
+  useDeleteWorkItem,
+  useLabels,
+  useUpdateWorkItem,
+  useWorkItem,
+} from '../hooks';
 
 interface WorkItemDetailPanelProps {
   projectRef: string;
@@ -78,6 +89,8 @@ function DetailBody({
   const { can } = useProjectPermissions(projectRef);
   const { data: members } = useProjectMembers(projectRef);
   const { data: labels } = useLabels(projectRef);
+  const { data: backlog } = useBacklog(projectRef, {});
+  const { data: sprints } = useSprints(projectRef);
   const update = useUpdateWorkItem(projectRef);
   const remove = useDeleteWorkItem(projectRef);
   const createChild = useCreateWorkItem(projectRef);
@@ -86,6 +99,11 @@ function DetailBody({
   const canDelete = can('workitem:delete');
   const canComment = can('comment:create');
   const canManageAttachments = can('attachment:manage');
+  const allowedParentTypes = ALLOWED_PARENT_TYPES[item.type];
+  const parentOptions = flattenBacklog(backlog ?? []).filter(
+    (candidate) => candidate.id !== item.id && allowedParentTypes.includes(candidate.type),
+  );
+  const parentRequired = REQUIRES_PARENT.includes(item.type);
 
   const [draft, setDraft] = useState(() => toDraft(item));
   const [criteria, setCriteria] = useState<AcceptanceCriterionInput[]>(item.acceptanceCriteria);
@@ -116,7 +134,9 @@ function DetailBody({
       status: draft.status,
       priority: draft.priority,
       storyPoints: draft.storyPoints === '' ? null : Number(draft.storyPoints),
+      parentId: draft.parentId || null,
       assigneeId: draft.assigneeId || null,
+      sprintId: draft.sprintId || null,
       isBlocked: draft.isBlocked,
       blockedReason: draft.isBlocked ? draft.blockedReason || null : null,
       labelIds,
@@ -260,6 +280,47 @@ function DetailBody({
               ))}
             </Select>
           </Field>
+
+          {allowedParentTypes.length > 0 && (
+            <Field
+              label="Epic / parent"
+              htmlFor="wi-parent"
+              required={parentRequired}
+              hint={parentRequired ? 'Le parent est obligatoire pour une sous-tache.' : undefined}
+            >
+              <Select
+                id="wi-parent"
+                value={draft.parentId}
+                disabled={!canEdit}
+                onChange={(event) => setDraft({ ...draft, parentId: event.target.value })}
+              >
+                {!parentRequired && <option value="">Aucun parent</option>}
+                {parentOptions.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.key} · {candidate.title}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
+
+          {item.type !== WorkItemType.EPIC && (
+            <Field label="Sprint" htmlFor="wi-sprint">
+              <Select
+                id="wi-sprint"
+                value={draft.sprintId}
+                disabled={!canEdit}
+                onChange={(event) => setDraft({ ...draft, sprintId: event.target.value })}
+              >
+                <option value="">Backlog (aucun sprint)</option>
+                {(sprints ?? []).map((sprint) => (
+                  <option key={sprint.id} value={sprint.id}>
+                    {sprint.name} · {LABELS_FR.sprintStatus[sprint.status]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
         </div>
 
         <div>
@@ -455,8 +516,14 @@ function toDraft(item: WorkItemDetail) {
     status: item.status,
     priority: item.priority,
     storyPoints: item.storyPoints === null ? '' : String(item.storyPoints),
+    parentId: item.parentId ?? '',
     assigneeId: item.assignee?.id ?? '',
+    sprintId: item.sprintId ?? '',
     isBlocked: item.isBlocked,
     blockedReason: item.blockedReason ?? '',
   };
+}
+
+function flattenBacklog(nodes: BacklogNode[]): BacklogNode[] {
+  return nodes.flatMap((node) => [node, ...flattenBacklog(node.children)]);
 }

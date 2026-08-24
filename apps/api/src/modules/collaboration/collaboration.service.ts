@@ -7,6 +7,7 @@ import {
   NotificationSummary,
 } from '@visiora/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { WORK_ITEM_KEY_SELECT, workItemKey } from '../work-items/work-item.mapper';
 import {
   ACTIVITY_SELECT,
   COMMENT_SELECT,
@@ -131,10 +132,10 @@ export class CollaborationService {
   private async assertWorkItem(projectId: string, itemId: string): Promise<{ key: string }> {
     const item = await this.prisma.workItem.findFirst({
       where: { id: itemId, projectId, deletedAt: null },
-      select: { number: true, project: { select: { key: true } } },
+      select: { ...WORK_ITEM_KEY_SELECT, project: { select: { key: true } } },
     });
     if (!item) throw new NotFoundException({ code: 'WORK_ITEM_NOT_FOUND', message: "Ce ticket n'existe pas" });
-    return { key: `${item.project.key}-${item.number}` };
+    return { key: workItemKey(item.project.key, item) };
   }
 
   private async assertMentions(projectId: string, userIds: string[]): Promise<void> {

@@ -99,7 +99,7 @@ enum ProjectStatus {
 
 model Project {
   id             String        @id @default(uuid())
-  /// Clé courte affichée dans les identifiants de tickets : VIS-142
+  /// Clé courte affichée dans les identifiants de tickets : VIS-1-2
   key            String        @unique
   name           String
   description    String?
@@ -108,7 +108,8 @@ model Project {
   startDate      DateTime?     @db.Date
   targetDate     DateTime?     @db.Date
   color          String? // pastille couleur dans le sélecteur de projet
-  /// Compteur du dernier numéro de ticket émis (incrémenté en transaction)
+  /// Ancien compteur global conserve pour compatibilite avec les donnees existantes.
+  /// Les nouveaux tickets utilisent une numerotation locale par type et parent.
   lastItemNumber Int           @default(0)
   createdById    String
   createdAt      DateTime      @default(now())
@@ -351,7 +352,7 @@ enum Priority {
 model WorkItem {
   id        String @id @default(uuid())
   projectId String
-  /// Numéro séquentiel par projet → affiché "VIS-142"
+  /// Numero local reutilisable dans sa portee : epic 1, story 1-1, 1-2, etc.
   number    Int
 
   type   WorkItemType
@@ -403,9 +404,9 @@ model WorkItem {
   comments           Comment[]
   pullRequests       PullRequest[]
 
-  @@unique([projectId, number])
   @@index([projectId, status])
   @@index([projectId, type, rank])
+  @@index([projectId, parentId, type, number])
   @@index([projectId, status, boardRank])
   @@index([sprintId, status])
   @@index([assigneeId])
