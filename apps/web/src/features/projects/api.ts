@@ -1,6 +1,7 @@
 import type {
   AddProjectMemberInput,
   CreateProjectInput,
+  DeleteProjectInput,
   ListProjectsQuery,
   Paginated,
   ProjectAccess,
@@ -36,7 +37,8 @@ export const projectsApi = {
   update: (projectRef: string, input: UpdateProjectInput) =>
     api.patch<ProjectSummary>(`/projects/${projectRef}`, input),
 
-  archive: (projectRef: string) => api.delete<void>(`/projects/${projectRef}`),
+  remove: (projectRef: string, input: DeleteProjectInput) =>
+    api.delete<void>(`/projects/${projectRef}`, input),
 
   listMembers: (projectRef: string) =>
     api.get<ProjectMemberSummary[]>(`/projects/${projectRef}/members`),

@@ -39,11 +39,13 @@ describe('ProjectsService.addMember', () => {
     const email = {
       sendNotification: jest.fn().mockResolvedValue(true),
     };
+    const storage = { deleteObject: jest.fn() };
 
     const service = new ProjectsService(
       prisma as unknown as ConstructorParameters<typeof ProjectsService>[0],
       access as unknown as ConstructorParameters<typeof ProjectsService>[1],
       email as unknown as ConstructorParameters<typeof ProjectsService>[2],
+      storage as unknown as ConstructorParameters<typeof ProjectsService>[3],
     );
 
     await service.addMember('project-1', { userId: 'user-2', role: 'DEVELOPER', capacity: null });
@@ -63,5 +65,48 @@ describe('ProjectsService.addMember', () => {
       expect.stringContaining('VisioraAI'),
       expect.any(String),
     );
+  });
+});
+
+describe('ProjectsService.remove', () => {
+  const project = {
+    name: 'Visiora Planner',
+    documents: [{ storageKey: 'projects/p1/documents/a.pdf' }],
+    workItems: [{ attachments: [{ storageKey: 'p1/w1/a.png' }] }],
+  };
+
+  function setup() {
+    const prisma = {
+      project: {
+        findUnique: jest.fn().mockResolvedValue(project),
+        delete: jest.fn().mockResolvedValue({ id: 'project-1' }),
+      },
+    };
+    const storage = { deleteObject: jest.fn().mockResolvedValue(undefined) };
+    const service = new ProjectsService(
+      prisma as unknown as ConstructorParameters<typeof ProjectsService>[0],
+      {} as ConstructorParameters<typeof ProjectsService>[1],
+      {} as ConstructorParameters<typeof ProjectsService>[2],
+      storage as unknown as ConstructorParameters<typeof ProjectsService>[3],
+    );
+    return { prisma, storage, service };
+  }
+
+  it('refuse la suppression si le nom de confirmation diffère', async () => {
+    const { prisma, service } = setup();
+
+    await expect(
+      service.remove('project-1', { confirmationName: 'Autre projet' }),
+    ).rejects.toMatchObject({ response: { code: 'PROJECT_CONFIRMATION_MISMATCH' } });
+    expect(prisma.project.delete).not.toHaveBeenCalled();
+  });
+
+  it('supprime le projet puis nettoie ses objets de stockage', async () => {
+    const { prisma, storage, service } = setup();
+
+    await service.remove('project-1', { confirmationName: project.name });
+
+    expect(prisma.project.delete).toHaveBeenCalledWith({ where: { id: 'project-1' } });
+    expect(storage.deleteObject).toHaveBeenCalledTimes(2);
   });
 });

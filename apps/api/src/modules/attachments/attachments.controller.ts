@@ -15,7 +15,11 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
-import type { AttachmentSummary, AuthenticatedUser } from '@visiora/shared';
+import {
+  MAX_ATTACHMENT_SIZE_MB,
+  type AttachmentSummary,
+  type AuthenticatedUser,
+} from '@visiora/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ProjectId } from '../../common/decorators/project-id.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -37,7 +41,11 @@ export class AttachmentsController {
 
   @Post()
   @RequirePermission('attachment:manage')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: MAX_ATTACHMENT_SIZE_MB * 1024 * 1024, files: 1 },
+    }),
+  )
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {

@@ -60,7 +60,7 @@ export class UsersController {
   }
 
   @Post('me/avatar')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1 } }))
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {

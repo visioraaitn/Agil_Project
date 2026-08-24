@@ -10,7 +10,9 @@ interface Bucket {
   resetAt: number;
 }
 
-/** Phase 7: limite simple par IP, suffisante pour l'instance interne mono-process. */
+const MAX_BUCKETS = 10_000;
+
+/** Limite par IP pour une instance. La protection volumétrique reste à la charge du proxy/WAF. */
 export function createRateLimitMiddleware({ windowMs, max }: RateLimitOptions): RequestHandler {
   const buckets = new Map<string, Bucket>();
 
@@ -21,7 +23,8 @@ export function createRateLimitMiddleware({ windowMs, max }: RateLimitOptions): 
     }
 
     const now = Date.now();
-    const key = clientIp(request);
+    // `request.ip` n'est fiable que parce que main.ts fixe explicitement le nombre de proxies.
+    const key = request.ip || request.socket.remoteAddress || 'unknown';
     const current = buckets.get(key);
     const bucket =
       current && current.resetAt > now ? current : { count: 0, resetAt: now + windowMs };
@@ -29,7 +32,7 @@ export function createRateLimitMiddleware({ windowMs, max }: RateLimitOptions): 
     bucket.count += 1;
     buckets.set(key, bucket);
 
-    cleanupExpiredBuckets(buckets, now);
+    cleanupExpiredBuckets(buckets, now, key);
 
     const retryAfterSeconds = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
     response.setHeader('X-RateLimit-Limit', String(max));
@@ -43,7 +46,7 @@ export function createRateLimitMiddleware({ windowMs, max }: RateLimitOptions): 
         code: 'RATE_LIMITED',
         message: 'Trop de requetes, veuillez reessayer dans un instant',
         timestamp: new Date().toISOString(),
-        path: request.originalUrl,
+        path: request.path,
       });
       return;
     }
@@ -52,17 +55,19 @@ export function createRateLimitMiddleware({ windowMs, max }: RateLimitOptions): 
   };
 }
 
-function clientIp(request: Request): string {
-  const forwarded = request.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.length > 0) {
-    return forwarded.split(',')[0]?.trim() || request.ip || 'unknown';
-  }
-  return request.ip || request.socket.remoteAddress || 'unknown';
-}
-
-function cleanupExpiredBuckets(buckets: Map<string, Bucket>, now: number): void {
-  if (buckets.size < 10_000) return;
+function cleanupExpiredBuckets(
+  buckets: Map<string, Bucket>,
+  now: number,
+  currentKey: string,
+): void {
+  if (buckets.size < MAX_BUCKETS) return;
   for (const [key, bucket] of buckets) {
     if (bucket.resetAt <= now) buckets.delete(key);
+  }
+
+  // Empêche une consommation mémoire non bornée même si toutes les fenêtres sont actives.
+  for (const key of buckets.keys()) {
+    if (buckets.size <= MAX_BUCKETS) break;
+    if (key !== currentKey) buckets.delete(key);
   }
 }

@@ -2,6 +2,16 @@ import { z } from 'zod';
 
 export const uuidSchema = z.string().uuid();
 
+/** URL navigable sûre : exclut notamment javascript:, data:, file: et ftp:. */
+export const httpUrlSchema = z
+  .string()
+  .trim()
+  .max(500)
+  .url('URL invalide')
+  .refine((value) => ['http:', 'https:'].includes(new URL(value).protocol), {
+    message: 'Seules les URL HTTP et HTTPS sont autorisées',
+  });
+
 export const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),

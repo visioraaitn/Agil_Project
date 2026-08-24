@@ -16,13 +16,10 @@ import {
   ThumbsUp,
   XCircle,
 } from 'lucide-react';
-import {
-  LABELS_FR,
-  PullRequestStatus,
-  type PullRequestDetail,
-} from '@visiora/shared';
+import { LABELS_FR, PullRequestStatus, type PullRequestDetail } from '@visiora/shared';
 import { MarkdownEditor } from '@/components/common/MarkdownEditor';
 import { MarkdownViewer } from '@/components/common/MarkdownViewer';
+import { safeHttpUrl } from '@/lib/security';
 import { EmptyState, InlineError } from '@/components/common/StateMessage';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/features/auth/use-auth';
@@ -51,6 +48,7 @@ export function PullRequestDetailView({
 }) {
   const { user } = useAuth();
   const { can } = useProjectPermissions(projectRef);
+  const externalUrl = pullRequest.externalUrl ? safeHttpUrl(pullRequest.externalUrl) : null;
 
   const [activeTab, setActiveTab] = useState<'overview' | 'discussion' | 'activity'>('overview');
   const [commentDraft, setCommentDraft] = useState('');
@@ -89,7 +87,9 @@ export function PullRequestDetailView({
     try {
       await requestChanges.mutateAsync({ pullRequestId: pullRequest.id, comment: reason });
     } catch (err: unknown) {
-      setActionError(err instanceof Error ? err.message : 'Erreur lors de la demande de modifications');
+      setActionError(
+        err instanceof Error ? err.message : 'Erreur lors de la demande de modifications',
+      );
     }
   };
 
@@ -196,9 +196,9 @@ export function PullRequestDetailView({
                   )}
                 </div>
 
-                {pullRequest.externalUrl && (
+                {externalUrl && (
                   <a
-                    href={pullRequest.externalUrl}
+                    href={externalUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="text-accent-600 hover:text-accent-800 inline-flex items-center gap-1 font-semibold"
@@ -254,11 +254,7 @@ export function PullRequestDetailView({
                       Demander modifs
                     </Button>
 
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      onClick={() => setRejectOpen(true)}
-                    >
+                    <Button size="sm" variant="danger" onClick={() => setRejectOpen(true)}>
                       <XCircle className="size-3.5" />
                       Rejeter
                     </Button>
@@ -281,12 +277,7 @@ export function PullRequestDetailView({
               {canClose &&
                 pullRequest.status !== PullRequestStatus.MERGED &&
                 pullRequest.status !== PullRequestStatus.CLOSED && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={handleClose}
-                    loading={close.isPending}
-                  >
+                  <Button size="sm" variant="ghost" onClick={handleClose} loading={close.isPending}>
                     Fermer la PR
                   </Button>
                 )}
@@ -299,8 +290,8 @@ export function PullRequestDetailView({
               <div className="bg-accent-50 dark:bg-accent-950/40 border-accent-200 dark:border-accent-800 flex items-center gap-2 rounded border px-3 py-1.5 text-xs">
                 <Shield className="text-accent-700 size-4 shrink-0" />
                 <span className="text-ink-700 dark:text-ink-300">
-                  Politique de branche protégée : en tant qu'auteur, vous ne pouvez pas approuver votre
-                  propre Pull Request. Un autre réviseur ou PO doit valider vos modifications.
+                  Politique de branche protégée : en tant qu'auteur, vous ne pouvez pas approuver
+                  votre propre Pull Request. Un autre réviseur ou PO doit valider vos modifications.
                 </span>
               </div>
             )}
@@ -441,11 +432,15 @@ export function PullRequestDetailView({
 
             {/* Description Markdown de la PR */}
             <section className="border-border-default bg-surface rounded-lg border p-5 shadow-sm">
-              <h2 className="text-ink-900 mb-3 text-base font-bold">Description de la Pull Request</h2>
+              <h2 className="text-ink-900 mb-3 text-base font-bold">
+                Description de la Pull Request
+              </h2>
               {pullRequest.description ? (
                 <MarkdownViewer content={pullRequest.description} />
               ) : (
-                <p className="text-ink-400 text-sm italic">Aucune description fournie pour cette PR.</p>
+                <p className="text-ink-400 text-sm italic">
+                  Aucune description fournie pour cette PR.
+                </p>
               )}
             </section>
 
@@ -486,7 +481,9 @@ export function PullRequestDetailView({
                         <div className="bg-accent-600 flex size-6 items-center justify-center rounded-full text-xs font-bold text-white">
                           {comment.author.name.charAt(0).toUpperCase()}
                         </div>
-                        <span className="text-ink-900 text-sm font-semibold">{comment.author.name}</span>
+                        <span className="text-ink-900 text-sm font-semibold">
+                          {comment.author.name}
+                        </span>
                         <span className="text-ink-400 text-xs">
                           {new Date(comment.createdAt).toLocaleString('fr-FR')}
                         </span>
@@ -581,11 +578,15 @@ export function PullRequestDetailView({
 export function PrStatusBadge({ status }: { status: PullRequestStatus }) {
   const tone = {
     [PullRequestStatus.OPEN]: 'bg-surface-sunken text-ink-700 border-border-default',
-    [PullRequestStatus.READY_FOR_APPROVAL]: 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800',
-    [PullRequestStatus.APPROVED]: 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800',
-    [PullRequestStatus.CHANGES_REQUESTED]: 'bg-red-100 text-red-900 border-red-300 dark:bg-red-950 dark:text-red-200 dark:border-red-800',
+    [PullRequestStatus.READY_FOR_APPROVAL]:
+      'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800',
+    [PullRequestStatus.APPROVED]:
+      'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800',
+    [PullRequestStatus.CHANGES_REQUESTED]:
+      'bg-red-100 text-red-900 border-red-300 dark:bg-red-950 dark:text-red-200 dark:border-red-800',
     [PullRequestStatus.REJECTED]: 'bg-red-900 text-white border-red-950',
-    [PullRequestStatus.MERGED]: 'bg-accent-100 text-accent-900 border-accent-300 dark:bg-accent-950 dark:text-accent-200 dark:border-accent-800',
+    [PullRequestStatus.MERGED]:
+      'bg-accent-100 text-accent-900 border-accent-300 dark:bg-accent-950 dark:text-accent-200 dark:border-accent-800',
     [PullRequestStatus.CLOSED]: 'bg-surface-sunken text-ink-400 border-border-subtle',
   }[status];
 

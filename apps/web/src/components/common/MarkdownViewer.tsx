@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { CheckSquare, Copy, Check, Square } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { safeHttpUrl } from '@/lib/security';
 
 interface MarkdownViewerProps {
   content?: string | null;
@@ -44,11 +45,7 @@ function parseMarkdown(
     if (line.trim().startsWith('```')) {
       if (inCodeBlock) {
         elements.push(
-          <CodeBlock
-            key={`code-${i}`}
-            code={codeBuffer.join('\n')}
-            language={codeLang}
-          />,
+          <CodeBlock key={`code-${i}`} code={codeBuffer.join('\n')} language={codeLang} />,
         );
         inCodeBlock = false;
         codeBuffer = [];
@@ -76,7 +73,10 @@ function parseMarkdown(
     }
     if (line.startsWith('## ')) {
       elements.push(
-        <h3 key={i} className="text-ink-900 font-bold text-base mt-3 mb-1 border-b border-border-subtle pb-1">
+        <h3
+          key={i}
+          className="text-ink-900 font-bold text-base mt-3 mb-1 border-b border-border-subtle pb-1"
+        >
           {renderInline(line.slice(3))}
         </h3>,
       );
@@ -84,7 +84,10 @@ function parseMarkdown(
     }
     if (line.startsWith('# ')) {
       elements.push(
-        <h2 key={i} className="text-ink-900 font-bold text-lg mt-4 mb-2 border-b border-border-default pb-1">
+        <h2
+          key={i}
+          className="text-ink-900 font-bold text-lg mt-4 mb-2 border-b border-border-default pb-1"
+        >
           {renderInline(line.slice(2))}
         </h2>,
       );
@@ -158,13 +161,7 @@ function parseMarkdown(
   }
 
   if (inCodeBlock && codeBuffer.length > 0) {
-    elements.push(
-      <CodeBlock
-        key="code-final"
-        code={codeBuffer.join('\n')}
-        language={codeLang}
-      />,
-    );
+    elements.push(<CodeBlock key="code-final" code={codeBuffer.join('\n')} language={codeLang} />);
   }
 
   return elements;
@@ -212,7 +209,7 @@ function renderInline(text: string): React.ReactNode {
       if (match.index > lastIndex) {
         parts.push(renderInlineFormatting(text.slice(lastIndex, match.index)));
       }
-      const imgSrc = match[2];
+      const imgSrc = match[2] ? safeHttpUrl(match[2]) : null;
       const imgAlt = match[1] || 'Capture';
       if (imgSrc) {
         parts.push(
@@ -221,7 +218,7 @@ function renderInline(text: string): React.ReactNode {
             src={imgSrc}
             alt={imgAlt}
             className="max-h-80 my-2 rounded border border-border-default object-contain shadow-sm cursor-zoom-in"
-            onClick={() => window.open(imgSrc, '_blank')}
+            onClick={() => window.open(imgSrc, '_blank', 'noopener,noreferrer')}
           />,
         );
       }
@@ -267,10 +264,12 @@ function renderInlineFormatting(text: string): React.ReactNode {
     }
     const linkMatch = tok.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
     if (linkMatch && linkMatch[1] && linkMatch[2]) {
+      const href = safeHttpUrl(linkMatch[2]);
+      if (!href) return <span key={idx}>{linkMatch[1]}</span>;
       return (
         <a
           key={idx}
-          href={linkMatch[2]}
+          href={href}
           target="_blank"
           rel="noopener noreferrer"
           className="text-accent-600 hover:text-accent-800 underline font-medium"

@@ -1,13 +1,13 @@
 import { z } from 'zod';
 import { GitProvider, PullRequestStatus } from '../enums';
-import { uuidSchema } from './common';
+import { httpUrlSchema, uuidSchema } from './common';
 import type { UserDirectoryEntry } from './user';
 
 export const createRepositorySchema = z.object({
   name: z.string().trim().min(2, 'Le nom doit contenir au moins 2 caracteres').max(120),
   description: z.string().trim().max(1000).nullable().optional(),
   provider: z.nativeEnum(GitProvider).default(GitProvider.GITHUB),
-  url: z.string().trim().url('URL invalide').max(500),
+  url: httpUrlSchema,
   defaultBranch: z.string().trim().min(1).max(120).default('main'),
 });
 export type CreateRepositoryInput = z.infer<typeof createRepositorySchema>;
@@ -33,7 +33,7 @@ export const createPullRequestSchema = z.object({
   title: z.string().trim().min(3, 'Le titre doit contenir au moins 3 caracteres').max(255),
   description: z.string().trim().max(10000).nullable().optional(),
   externalNumber: z.number().int().positive().nullable().optional(),
-  externalUrl: z.string().trim().url('URL invalide').nullable().optional(),
+  externalUrl: httpUrlSchema.nullable().optional(),
   sourceBranchId: uuidSchema,
   targetBranchId: uuidSchema.nullable().optional(),
   targetBranchName: z.string().trim().max(180).nullable().optional(),

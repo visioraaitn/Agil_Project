@@ -10,11 +10,13 @@ interface LogPayload {
   statusCode: number;
   durationMs: number;
   requestId: string;
+  cfRay?: string;
   ip?: string;
   userAgent?: string;
 }
 
-const SENSITIVE_PARAM_PATTERN = /^(token|access_token|refresh_token|password|secret|authorization|code|key)$/i;
+const SENSITIVE_PARAM_PATTERN =
+  /^(token|access_token|refresh_token|password|secret|authorization|code|key)$/i;
 
 export function sanitizeLoggedPath(rawUrl: string): string {
   try {
@@ -38,7 +40,11 @@ export function sanitizeLoggedPath(rawUrl: string): string {
 export function requestLoggerMiddleware(): RequestHandler {
   return (request: Request, response: Response, next: NextFunction) => {
     const startedAt = performance.now();
-    const requestId = request.headers['x-request-id']?.toString() ?? randomUUID();
+    const suppliedRequestId = request.headers['x-request-id']?.toString();
+    const requestId =
+      suppliedRequestId && /^[a-zA-Z0-9._:-]{1,128}$/.test(suppliedRequestId)
+        ? suppliedRequestId
+        : randomUUID();
     response.setHeader('X-Request-Id', requestId);
 
     response.on('finish', () => {
@@ -51,6 +57,7 @@ export function requestLoggerMiddleware(): RequestHandler {
         statusCode,
         durationMs: Math.round(performance.now() - startedAt),
         requestId,
+        cfRay: request.headers['cf-ray']?.toString().slice(0, 128),
         ip: request.ip,
         userAgent: request.headers['user-agent'],
       };

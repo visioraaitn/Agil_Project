@@ -1,8 +1,14 @@
-import type { AuthenticatedUser, ChangePasswordInput, LoginInput, SessionResponse } from '@visiora/shared';
+import type {
+  AuthenticatedUser,
+  ChangePasswordInput,
+  LoginInput,
+  SessionResponse,
+} from '@visiora/shared';
 import { api, apiFetch } from '@/lib/api-client';
 
 export const authApi = {
-  login: (input: LoginInput) => api.post<SessionResponse>('/auth/login', input),
+  login: (input: LoginInput) =>
+    apiFetch<SessionResponse>('/auth/login', { method: 'POST', body: input, skipRefresh: true }),
 
   /**
    * Restaure la session au chargement de l'application à partir du cookie

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { GlobalRole, type AuthenticatedUser, type LoginInput } from '@visiora/shared';
-import { setAccessToken } from '@/lib/api-client';
+import { SESSION_EXPIRED_EVENT, setAccessToken } from '@/lib/api-client';
 import { authApi } from './api';
 import { AuthContext, type AuthState, type AuthStatus } from './auth-context';
 
@@ -33,6 +33,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const expireSession = () => {
+      setAccessToken(null);
+      setUser(null);
+      setStatus('anonymous');
+      queryClient.clear();
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, expireSession);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, expireSession);
+  }, [queryClient]);
 
   const login = useCallback(async (input: LoginInput) => {
     const session = await authApi.login(input);

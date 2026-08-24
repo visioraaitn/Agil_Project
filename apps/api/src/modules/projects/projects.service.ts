@@ -1,9 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
   AddProjectMemberInput,
   AuthenticatedUser,
   CreateProjectInput,
+  DeleteProjectInput,
   EntityType,
   isPlatformAdministrator,
   ListProjectsQuery,
@@ -19,6 +20,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { ProjectAccessService } from '../access/project-access.service';
 import { EmailService } from '../collaboration/email.service';
+import { ObjectStorageService } from '../storage/object-storage.service';
 
 const PROJECT_FIELDS = {
   id: true,
@@ -48,10 +50,13 @@ type MemberRow = Prisma.ProjectMemberGetPayload<{ select: typeof MEMBER_FIELDS }
 
 @Injectable()
 export class ProjectsService {
+  private readonly logger = new Logger(ProjectsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: ProjectAccessService,
     private readonly email: EmailService,
+    private readonly storage: ObjectStorageService,
   ) {}
 
   /**
@@ -168,12 +173,45 @@ export class ProjectsService {
     return toProjectSummary(project, await this.access.getProjectRole(user.id, projectId));
   }
 
-  /** Archivage plutôt que suppression : le projet porte tout l'historique agile. */
-  async archive(projectId: string): Promise<void> {
-    await this.prisma.project.update({
+  async remove(projectId: string, input: DeleteProjectInput): Promise<void> {
+    const project = await this.prisma.project.findUnique({
       where: { id: projectId },
-      data: { status: ProjectStatus.ARCHIVED, archivedAt: new Date() },
+      select: {
+        name: true,
+        documents: { select: { storageKey: true } },
+        workItems: {
+          select: { attachments: { select: { storageKey: true } } },
+        },
+      },
     });
+    if (!project) throw projectNotFound();
+    if (input.confirmationName !== project.name) {
+      throw new BadRequestException({
+        code: 'PROJECT_CONFIRMATION_MISMATCH',
+        message: 'Le nom saisi ne correspond pas au nom du projet',
+      });
+    }
+
+    const storageKeys = [
+      ...project.documents.map((document) => document.storageKey),
+      ...project.workItems.flatMap((item) =>
+        item.attachments.map((attachment) => attachment.storageKey),
+      ),
+    ];
+
+    // La base est supprimée en premier : une panne S3 ne doit pas laisser un
+    // projet partiellement supprimé et encore accessible. Les éventuels objets
+    // orphelins sont inaccessibles et leur échec de nettoyage est journalisé.
+    await this.prisma.project.delete({ where: { id: projectId } });
+    const cleanup = await Promise.allSettled(
+      storageKeys.map((storageKey) => this.storage.deleteObject(storageKey)),
+    );
+    const failures = cleanup.filter((result) => result.status === 'rejected').length;
+    if (failures > 0) {
+      this.logger.warn(
+        `${failures} fichier(s) du projet ${projectId} n'ont pas pu être nettoyés du stockage`,
+      );
+    }
   }
 
   // --- Membres ------------------------------------------------------------
@@ -306,6 +344,13 @@ export class ProjectsService {
       });
     }
   }
+}
+
+function projectNotFound(): NotFoundException {
+  return new NotFoundException({
+    code: 'PROJECT_NOT_FOUND',
+    message: "Ce projet n'existe pas",
+  });
 }
 
 function toProjectSummary(

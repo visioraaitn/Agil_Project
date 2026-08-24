@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { GlobalRole, UserFunction } from '../enums';
 import { passwordSchema } from './auth';
-import { paginationSchema } from './common';
+import { httpUrlSchema, paginationSchema } from './common';
 
 const optionalUserFunctionSchema = z
   .union([z.nativeEnum(UserFunction), z.literal('')])
@@ -22,7 +22,7 @@ export const updateUserSchema = z
     name: z.string().min(2).max(120).optional(),
     email: z.string().email().toLowerCase().optional(),
     jobTitle: optionalUserFunctionSchema,
-    avatarUrl: z.string().url().nullable().optional(),
+    avatarUrl: httpUrlSchema.nullable().optional(),
     isActive: z.boolean().optional(),
     globalRole: z.nativeEnum(GlobalRole).optional(),
   })

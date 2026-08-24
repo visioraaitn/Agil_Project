@@ -47,6 +47,8 @@ describe('matrice de permissions', () => {
       expect(can(member(role), 'project:create')).toBe(false);
       expect(can(member(role), 'project:delete')).toBe(false);
       expect(can(member(role), 'project:document:manage')).toBe(false);
+      expect(can(member(role), 'project:update')).toBe(false);
+      expect(can(member(role), 'project:member:manage')).toBe(false);
     }
   });
 

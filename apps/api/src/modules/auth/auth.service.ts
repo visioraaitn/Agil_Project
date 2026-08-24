@@ -31,13 +31,18 @@ export class AuthService {
     providerId = 'local',
   ): Promise<{ session: SessionResponse; refreshToken: string; refreshExpiresAt: Date }> {
     const provider = this.providers.get(providerId);
-    if (!provider) throw new BadRequestException({ code: 'UNKNOWN_IDENTITY_PROVIDER', message: 'Fournisseur inconnu' });
+    if (!provider)
+      throw new BadRequestException({
+        code: 'UNKNOWN_IDENTITY_PROVIDER',
+        message: 'Fournisseur inconnu',
+      });
 
     const identity = await provider.authenticate(credentials);
     if (!identity) throw new UnauthorizedException(INVALID_CREDENTIALS);
 
     const user = await this.prisma.user.findUnique({ where: { email: identity.email } });
-    if (!user || !user.isActive || user.deletedAt) throw new UnauthorizedException(INVALID_CREDENTIALS);
+    if (!user || !user.isActive || user.deletedAt)
+      throw new UnauthorizedException(INVALID_CREDENTIALS);
 
     await this.prisma.user.update({
       where: { id: user.id },
@@ -62,7 +67,10 @@ export class AuthService {
     ctx: SessionContext,
   ): Promise<{ session: SessionResponse; refreshToken: string; refreshExpiresAt: Date }> {
     if (!rawToken) {
-      throw new UnauthorizedException({ code: 'MISSING_REFRESH_TOKEN', message: 'Aucune session à renouveler' });
+      throw new UnauthorizedException({
+        code: 'MISSING_REFRESH_TOKEN',
+        message: 'Aucune session à renouveler',
+      });
     }
 
     const { userId, refresh } = await this.tokens.rotateRefreshToken(rawToken, ctx);
@@ -71,13 +79,24 @@ export class AuthService {
     if (!user || !user.isActive || user.deletedAt) {
       // Compte désactivé entre-temps : on coupe toutes ses sessions.
       await this.tokens.revokeAllSessions(userId);
-      throw new UnauthorizedException({ code: 'ACCOUNT_DISABLED', message: 'Ce compte est désactivé' });
+      throw new UnauthorizedException({
+        code: 'ACCOUNT_DISABLED',
+        message: 'Ce compte est désactivé',
+      });
     }
+
+    const expiresIn = Math.max(
+      1,
+      Math.min(
+        this.tokens.accessTtlSeconds,
+        Math.floor((refresh.expiresAt.getTime() - Date.now()) / 1000),
+      ),
+    );
 
     return {
       session: {
-        accessToken: this.tokens.signAccessToken({ sub: user.id, email: user.email }),
-        expiresIn: this.tokens.accessTtlSeconds,
+        accessToken: this.tokens.signAccessToken({ sub: user.id, email: user.email }, expiresIn),
+        expiresIn,
         user: toAuthenticatedUser(user),
       },
       refreshToken: refresh.token,

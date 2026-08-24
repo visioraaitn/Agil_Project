@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createProjectSchema } from './project';
+import { createProjectSchema, deleteProjectSchema } from './project';
 
 describe('createProjectSchema', () => {
   it("accepte une création sans date d'échéance", () => {
@@ -20,5 +20,12 @@ describe('createProjectSchema', () => {
     });
 
     expect(project.targetDate).toBeInstanceOf(Date);
+  });
+});
+
+describe('deleteProjectSchema', () => {
+  it('exige un nom de confirmation non vide', () => {
+    expect(deleteProjectSchema.safeParse({ confirmationName: '' }).success).toBe(false);
+    expect(deleteProjectSchema.safeParse({ confirmationName: 'Visiora' }).success).toBe(true);
   });
 });

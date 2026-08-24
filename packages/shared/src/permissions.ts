@@ -15,10 +15,10 @@ export const PERMISSIONS = [
   'project:create',
   'project:delete',
   'project:document:manage',
-
-  // Projet
   'project:update',
   'project:member:manage',
+
+  // Projet
   // Dépôts & Branches
   'repo:manage',
   'branch:create',
@@ -58,8 +58,6 @@ export const PERMISSIONS = [
 export type Permission = (typeof PERMISSIONS)[number];
 
 const PRODUCT_OWNER_PERMISSIONS: readonly Permission[] = [
-  'project:update',
-  'project:member:manage',
   'repo:manage',
   'branch:create',
   'branch:delete',
@@ -86,7 +84,6 @@ const PRODUCT_OWNER_PERMISSIONS: readonly Permission[] = [
 ];
 
 const SCRUM_MASTER_PERMISSIONS: readonly Permission[] = [
-  'project:member:manage',
   'branch:create',
   'label:manage',
   'workitem:create',
@@ -139,6 +136,8 @@ export const PLATFORM_PERMISSIONS: readonly Permission[] = [
   'project:create',
   'project:delete',
   'project:document:manage',
+  'project:update',
+  'project:member:manage',
 ];
 
 export interface AccessContext {

@@ -45,6 +45,11 @@ export const updateProjectSchema = createProjectSchema
   });
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 
+export const deleteProjectSchema = z.object({
+  confirmationName: z.string().min(1).max(160),
+});
+export type DeleteProjectInput = z.infer<typeof deleteProjectSchema>;
+
 export const listProjectsQuerySchema = paginationSchema.extend({
   search: z.string().trim().max(160).optional(),
   status: z.nativeEnum(ProjectStatus).optional(),

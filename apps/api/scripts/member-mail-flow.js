@@ -23,7 +23,10 @@ for (const raw of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
   if (idx === -1) continue;
   const key = line.slice(0, idx).trim();
   let value = line.slice(idx + 1).trim();
-  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
     value = value.slice(1, -1);
   }
   env[key] = value;
@@ -32,7 +35,10 @@ for (const raw of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
 const TEST_EMAIL = `visiora.ai.tn+membertest${Date.now()}@gmail.com`;
 
 async function request(method, path, payload, token) {
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Requested-With': 'VisioraAI',
+  };
   if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch('http://localhost:3000/api/v1' + path, {
     method,
@@ -41,13 +47,20 @@ async function request(method, path, payload, token) {
   });
   const text = await res.text();
   let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
   return { status: res.status, data };
 }
 
 (async () => {
   console.log('STEP 1: login admin');
-  const login = await request('POST', '/auth/login', { email: 'admin@visiora.ai', password: 'Visiora2026!' });
+  const login = await request('POST', '/auth/login', {
+    email: 'admin@visiora.ai',
+    password: 'Visiora2026!',
+  });
   console.log('LOGIN_STATUS', login.status);
   if (login.status !== 200) {
     console.log(JSON.stringify(login.data));
@@ -56,30 +69,41 @@ async function request(method, path, payload, token) {
   const token = login.data.accessToken;
 
   console.log('STEP 2: create target user');
-  const createUser = await request('POST', '/users', {
-    email: TEST_EMAIL,
-    name: 'Member Flow Test',
-    jobTitle: 'QA',
-    globalRole: 'MEMBER',
-    password: 'StrongPassword123!'
-  }, token);
+  const createUser = await request(
+    'POST',
+    '/users',
+    {
+      email: TEST_EMAIL,
+      name: 'Member Flow Test',
+      jobTitle: 'QA',
+      globalRole: 'MEMBER',
+      password: 'StrongPassword123!',
+    },
+    token,
+  );
   console.log('CREATE_USER_STATUS', createUser.status);
   console.log(JSON.stringify(createUser.data));
   if (createUser.status !== 201) process.exit(1);
 
   console.log('STEP 3: add user to project');
-  const addMember = await request('POST', '/projects/VIS/members', {
-    userId: createUser.data.id,
-    role: 'DEVELOPER',
-    capacity: 8,
-  }, token);
+  const addMember = await request(
+    'POST',
+    '/projects/VIS/members',
+    {
+      userId: createUser.data.id,
+      role: 'DEVELOPER',
+      capacity: 8,
+    },
+    token,
+  );
   console.log('ADD_MEMBER_STATUS', addMember.status);
   console.log(JSON.stringify(addMember.data));
   if (addMember.status !== 201 && addMember.status !== 200) process.exit(1);
 
   console.log('STEP 4: direct app-level SMTP send to same mailbox');
   const port = Number(env.SMTP_PORT || 587);
-  const secure = env.SMTP_SECURE !== undefined ? String(env.SMTP_SECURE).toLowerCase() === 'true' : port === 465;
+  const secure =
+    env.SMTP_SECURE !== undefined ? String(env.SMTP_SECURE).toLowerCase() === 'true' : port === 465;
   const user = env.SMTP_USER ? env.SMTP_USER.trim() : '';
   const pass = env.SMTP_PASSWORD ? env.SMTP_PASSWORD.replace(/\s+/g, '') : '';
 

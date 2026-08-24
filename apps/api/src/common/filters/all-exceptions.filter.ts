@@ -27,7 +27,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
       this.logger.error(
-        `${request.method} ${request.url} → ${status}`,
+        `${request.method} ${request.path} → ${status}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
     }
@@ -38,7 +38,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message,
       ...(details ? { details } : {}),
       timestamp: new Date().toISOString(),
-      path: request.url,
+      path: request.path,
     };
 
     response.status(status).json(body);
@@ -70,6 +70,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       return this.describePrisma(exception);
+    }
+
+    if (
+      typeof exception === 'object' &&
+      exception !== null &&
+      'name' in exception &&
+      exception.name === 'MulterError'
+    ) {
+      return {
+        status: HttpStatus.PAYLOAD_TOO_LARGE,
+        code: 'UPLOAD_TOO_LARGE',
+        message: 'Le fichier dépasse la taille maximale autorisée',
+      };
     }
 
     return {

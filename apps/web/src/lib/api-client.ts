@@ -1,6 +1,8 @@
 import type { ApiErrorBody } from '@visiora/shared';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1';
+const AJAX_HEADER = { 'X-Requested-With': 'VisioraAI' } as const;
+export const SESSION_EXPIRED_EVENT = 'visiora:session-expired';
 
 /** Erreur typée exposant le corps normalisé renvoyé par l'API. */
 export class ApiError extends Error {
@@ -69,6 +71,7 @@ async function refreshSession(): Promise<boolean> {
       const response = await fetch(buildUrl('/auth/refresh'), {
         method: 'POST',
         credentials: 'include',
+        headers: AJAX_HEADER,
       });
       if (!response.ok) return false;
       const data = (await response.json()) as { accessToken: string };
@@ -87,12 +90,15 @@ async function refreshSession(): Promise<boolean> {
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { body, query, skipRefresh, headers, ...rest } = options;
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+  const method = (rest.method ?? 'GET').toUpperCase();
+  const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(method);
 
   const response = await fetch(buildUrl(path, query), {
     ...rest,
     credentials: 'include',
     headers: {
       ...(body !== undefined && !isFormData ? { 'Content-Type': 'application/json' } : {}),
+      ...(isMutation ? AJAX_HEADER : {}),
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...headers,
     },
@@ -101,8 +107,13 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 
   // Token expiré : on rafraîchit une fois puis on rejoue la requête.
   if (response.status === 401 && !skipRefresh) {
+    const hadAuthenticatedSession = accessToken !== null;
     const refreshed = await refreshSession();
     if (refreshed) return apiFetch<T>(path, { ...options, skipRefresh: true });
+    if (hadAuthenticatedSession) {
+      setAccessToken(null);
+      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    }
   }
 
   if (response.status === 204) return undefined as T;
@@ -123,13 +134,14 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 }
 
 export const api = {
-  get: <T>(path: string, options?: RequestOptions) => apiFetch<T>(path, { ...options, method: 'GET' }),
+  get: <T>(path: string, options?: RequestOptions) =>
+    apiFetch<T>(path, { ...options, method: 'GET' }),
   post: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     apiFetch<T>(path, { ...options, method: 'POST', body }),
   patch: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     apiFetch<T>(path, { ...options, method: 'PATCH', body }),
   put: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     apiFetch<T>(path, { ...options, method: 'PUT', body }),
-  delete: <T>(path: string, options?: RequestOptions) =>
-    apiFetch<T>(path, { ...options, method: 'DELETE' }),
+  delete: <T>(path: string, body?: unknown, options?: RequestOptions) =>
+    apiFetch<T>(path, { ...options, method: 'DELETE', body }),
 };

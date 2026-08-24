@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+  Res,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
@@ -30,6 +40,7 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @Header('Cache-Control', 'no-store')
   @ApiOperation({ summary: 'Authentification par email et mot de passe' })
   async login(
     @Body(new ZodValidationPipe(loginSchema)) dto: LoginInput,
@@ -44,15 +55,21 @@ export class AuthController {
   @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
+  @Header('Cache-Control', 'no-store')
   @ApiOperation({ summary: "Renouvellement du token d'accès (rotation du refresh token)" })
   async refresh(
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<SessionResponse> {
     const raw = request.cookies?.[REFRESH_COOKIE] as string | undefined;
-    const result = await this.auth.refresh(raw, sessionContext(request));
-    this.setRefreshCookie(response, result.refreshToken, result.refreshExpiresAt);
-    return result.session;
+    try {
+      const result = await this.auth.refresh(raw, sessionContext(request));
+      this.setRefreshCookie(response, result.refreshToken, result.refreshExpiresAt);
+      return result.session;
+    } catch (error) {
+      response.clearCookie(REFRESH_COOKIE, this.cookieOptions());
+      throw error;
+    }
   }
 
   @Public()
@@ -68,6 +85,7 @@ export class AuthController {
   }
 
   @Get('me')
+  @Header('Cache-Control', 'no-store')
   @ApiOperation({ summary: 'Utilisateur authentifié courant' })
   me(@CurrentUser() user: AuthenticatedUser): AuthenticatedUser {
     return user;
@@ -100,6 +118,7 @@ export class AuthController {
       httpOnly: true,
       sameSite: this.config.get('AUTH_COOKIE_SAME_SITE', { infer: true }),
       secure: this.config.get('NODE_ENV', { infer: true }) === 'production',
+      priority: 'high',
       path: `${prefix}/auth`,
     };
   }

@@ -47,6 +47,17 @@ export function LoginPage() {
         </div>
 
         <form onSubmit={onSubmit} className="flex flex-col gap-3" noValidate>
+          <div className="pointer-events-none absolute -left-[10000px]" aria-hidden="true">
+            <label htmlFor="contactWebsite">Site web</label>
+            <input
+              id="contactWebsite"
+              type="text"
+              tabIndex={-1}
+              autoComplete="off"
+              {...register('contactWebsite')}
+            />
+          </div>
+
           <Field label="Adresse email" htmlFor="email" error={errors.email?.message} required>
             <Input
               id="email"

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   AddProjectMemberInput,
   CreateProjectInput,
+  DeleteProjectInput,
   ListProjectsQuery,
   Permission,
   ProjectRole,
@@ -62,6 +63,14 @@ export function useUpdateProject(projectRef: string) {
   return useMutation({
     mutationFn: (input: UpdateProjectInput) => projectsApi.update(projectRef, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.projects }),
+  });
+}
+
+export function useDeleteProject(projectRef: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: DeleteProjectInput) => projectsApi.remove(projectRef, input),
+    onSuccess: () => queryClient.removeQueries({ queryKey: queryKeys.projects }),
   });
 }
 

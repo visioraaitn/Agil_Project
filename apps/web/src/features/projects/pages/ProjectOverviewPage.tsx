@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Pencil } from 'lucide-react';
-import { useParams } from 'react-router-dom';
+import { Pencil, Settings, Trash2 } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { LABELS_FR, ProjectStatus } from '@visiora/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,8 @@ import { ErrorState, LoadingState } from '@/components/common/StateMessage';
 import { MembersPanel } from '../components/MembersPanel';
 import { ProjectDeadlineDialog } from '../components/ProjectDeadlineDialog';
 import { ProjectDocumentsPanel } from '../components/ProjectDocumentsPanel';
+import { EditProjectDialog } from '../components/EditProjectDialog';
+import { DeleteProjectDialog } from '../components/DeleteProjectDialog';
 import { useProject, useProjectPermissions } from '../hooks';
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {
@@ -29,6 +31,9 @@ function formatDate(iso: string | null): string {
 /** B.1 · Détails du projet et affectation des utilisateurs. */
 export function ProjectOverviewPage() {
   const [deadlineOpen, setDeadlineOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const navigate = useNavigate();
   const { projectKey } = useParams<{ projectKey: string }>();
   const { data: project, isLoading, error } = useProject(projectKey);
   const { can, role } = useProjectPermissions(projectKey);
@@ -58,6 +63,18 @@ export function ProjectOverviewPage() {
             {STATUS_LABEL[project.status]}
           </Badge>
           {role && <Badge tone="accent">Mon rôle : {LABELS_FR.projectRole[role]}</Badge>}
+          {can('project:update') && (
+            <Button size="sm" onClick={() => setEditOpen(true)}>
+              <Settings className="size-3.5" strokeWidth={1.75} />
+              Modifier
+            </Button>
+          )}
+          {can('project:delete') && (
+            <Button size="sm" variant="danger" onClick={() => setDeleteOpen(true)}>
+              <Trash2 className="size-3.5" strokeWidth={1.75} />
+              Supprimer
+            </Button>
+          )}
         </div>
       </header>
 
@@ -128,6 +145,19 @@ export function ProjectOverviewPage() {
         currentTargetDate={project.targetDate}
         open={deadlineOpen}
         onClose={() => setDeadlineOpen(false)}
+      />
+      <EditProjectDialog
+        project={project}
+        projectRef={projectKey}
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+      />
+      <DeleteProjectDialog
+        projectRef={projectKey}
+        projectName={project.name}
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onDeleted={() => navigate('/portfolio', { replace: true })}
       />
     </div>
   );

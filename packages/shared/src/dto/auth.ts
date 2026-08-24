@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { UserFunction } from '../enums';
+import { httpUrlSchema } from './common';
 
 const optionalUserFunctionSchema = z
   .union([z.nativeEnum(UserFunction), z.literal('')])
@@ -17,6 +18,8 @@ export const passwordSchema = z
 export const loginSchema = z.object({
   email: z.string().email("L'adresse email est invalide"),
   password: z.string().min(1, 'Le mot de passe est requis'),
+  /** Champ leurre invisible : un formulaire automatisé qui le remplit est rejeté. */
+  contactWebsite: z.string().max(0).optional(),
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
@@ -30,6 +33,6 @@ export const updateProfileSchema = z.object({
   name: z.string().min(2).max(120).optional(),
   email: z.string().email().optional(),
   jobTitle: optionalUserFunctionSchema,
-  avatarUrl: z.string().url().nullable().optional(),
+  avatarUrl: httpUrlSchema.nullable().optional(),
 });
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;

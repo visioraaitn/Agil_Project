@@ -16,6 +16,7 @@ import {
   AddProjectMemberInput,
   AuthenticatedUser,
   CreateProjectInput,
+  DeleteProjectInput,
   ListProjectsQuery,
   Paginated,
   ProjectAccess,
@@ -25,6 +26,7 @@ import {
   UpdateProjectMemberInput,
   addProjectMemberSchema,
   createProjectSchema,
+  deleteProjectSchema,
   listProjectsQuerySchema,
   updateProjectMemberSchema,
   updateProjectSchema,
@@ -100,9 +102,12 @@ export class ProjectsController {
   @Delete(':projectId')
   @RequirePermission('project:delete')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Archivage du projet' })
-  async archive(@ProjectId() projectId: string): Promise<void> {
-    await this.projects.archive(projectId);
+  @ApiOperation({ summary: 'Suppression définitive du projet après confirmation de son nom' })
+  async remove(
+    @ProjectId() projectId: string,
+    @Body(new ZodValidationPipe(deleteProjectSchema)) dto: DeleteProjectInput,
+  ): Promise<void> {
+    await this.projects.remove(projectId, dto);
   }
 
   // --- Membres ------------------------------------------------------------

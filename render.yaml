@@ -20,6 +20,14 @@ services:
         value: 60000
       - key: RATE_LIMIT_MAX
         value: 300
+      - key: LOGIN_RATE_LIMIT_WINDOW_MS
+        value: 900000
+      - key: LOGIN_RATE_LIMIT_MAX
+        value: 10
+      - key: REFRESH_RATE_LIMIT_WINDOW_MS
+        value: 60000
+      - key: REFRESH_RATE_LIMIT_MAX
+        value: 60
       - key: CORS_ORIGIN
         sync: false
       - key: APP_URL
@@ -35,7 +43,7 @@ services:
       - key: JWT_ACCESS_TTL
         value: 15m
       - key: JWT_REFRESH_TTL
-        value: 7d
+        value: 24h
       - key: S3_ENDPOINT
         sync: false
       - key: S3_REGION

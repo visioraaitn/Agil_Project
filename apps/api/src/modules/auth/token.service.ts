@@ -23,12 +23,13 @@ export interface SessionContext {
   ipAddress?: string;
 }
 
-/** Convertit « 15m », « 7d », « 3600s », « 2h » en secondes. */
+/** Convertit « 15m », « 24h », « 3600s », « 2d » en secondes. */
 export function parseDurationSeconds(duration: string): number {
   const match = /^(\d+)\s*(s|m|h|d)$/.exec(duration.trim());
-  if (!match) throw new Error(`Durée invalide : "${duration}" (attendu : 15m, 2h, 7d…)`);
+  if (!match) throw new Error(`Durée invalide : "${duration}" (attendu : 15m, 2h, 24h…)`);
 
   const value = Number(match[1]);
+  if (value <= 0) throw new Error(`Durée invalide : "${duration}" (la durée doit être positive)`);
   const multipliers: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
   return value * (multipliers[match[2] as string] as number);
 }
@@ -46,7 +47,11 @@ export class TokenService {
   }
 
   get refreshTtlSeconds(): number {
-    return parseDurationSeconds(this.config.get('JWT_REFRESH_TTL', { infer: true }));
+    const ttl = parseDurationSeconds(this.config.get('JWT_REFRESH_TTL', { infer: true }));
+    if (ttl > 24 * 60 * 60) {
+      throw new Error('JWT_REFRESH_TTL ne peut pas dépasser 24 heures');
+    }
+    return ttl;
   }
 
   /**
@@ -55,12 +60,12 @@ export class TokenService {
    * est en secondes) : impossible de les distinguer dans les journaux, et
    * aucune révocation ciblée envisageable.
    */
-  signAccessToken(payload: AccessTokenPayload): string {
+  signAccessToken(payload: AccessTokenPayload, expiresIn = this.accessTtlSeconds): string {
     return this.jwt.sign(
       { ...payload, jti: randomUUID() },
       {
         secret: this.config.get('JWT_ACCESS_SECRET', { infer: true }),
-        expiresIn: this.accessTtlSeconds,
+        expiresIn,
       },
     );
   }
@@ -71,7 +76,10 @@ export class TokenService {
         secret: this.config.get('JWT_ACCESS_SECRET', { infer: true }),
       });
     } catch {
-      throw new UnauthorizedException({ code: 'INVALID_TOKEN', message: 'Session expirée ou invalide' });
+      throw new UnauthorizedException({
+        code: 'INVALID_TOKEN',
+        message: 'Session expirée ou invalide',
+      });
     }
   }
 
@@ -86,9 +94,17 @@ export class TokenService {
       .digest('hex');
   }
 
-  async issueRefreshToken(userId: string, ctx: SessionContext = {}): Promise<IssuedRefreshToken> {
+  async issueRefreshToken(
+    userId: string,
+    ctx: SessionContext = {},
+    absoluteExpiresAt?: Date,
+  ): Promise<IssuedRefreshToken> {
     const token = randomBytes(48).toString('hex');
-    const expiresAt = new Date(Date.now() + this.refreshTtlSeconds * 1000);
+    const configuredDeadline = new Date(Date.now() + this.refreshTtlSeconds * 1000);
+    const expiresAt =
+      absoluteExpiresAt && absoluteExpiresAt < configuredDeadline
+        ? absoluteExpiresAt
+        : configuredDeadline;
 
     await this.prisma.session.create({
       data: {
@@ -113,22 +129,72 @@ export class TokenService {
   ): Promise<{ userId: string; refresh: IssuedRefreshToken }> {
     const session = await this.prisma.session.findUnique({
       where: { refreshTokenHash: this.hash(rawToken) },
-      select: { id: true, userId: true, expiresAt: true, revokedAt: true },
+      select: {
+        id: true,
+        userId: true,
+        expiresAt: true,
+        revokedAt: true,
+        createdAt: true,
+        userAgent: true,
+      },
     });
 
-    if (!session || session.revokedAt || session.expiresAt < new Date()) {
+    const now = new Date();
+    if (session?.revokedAt) {
+      // La réutilisation d'un refresh token déjà consommé indique une fuite
+      // possible : toutes les sessions du compte sont invalidées.
+      await this.revokeAllSessions(session.userId);
+      throw new UnauthorizedException({
+        code: 'REFRESH_TOKEN_REUSED',
+        message: 'Compromission de session détectée, veuillez vous reconnecter',
+      });
+    }
+    const idleDeadline = session
+      ? new Date(session.createdAt.getTime() + this.refreshTtlSeconds * 1000)
+      : null;
+    const userAgentChanged =
+      Boolean(session?.userAgent) &&
+      Boolean(ctx.userAgent) &&
+      session?.userAgent !== ctx.userAgent?.slice(0, 255);
+    if (
+      !session ||
+      session.expiresAt < now ||
+      !idleDeadline ||
+      idleDeadline < now ||
+      userAgentChanged
+    ) {
+      if (session && !session.revokedAt) {
+        await this.prisma.session.updateMany({
+          where: { id: session.id, revokedAt: null },
+          data: { revokedAt: now },
+        });
+      }
       throw new UnauthorizedException({
         code: 'INVALID_REFRESH_TOKEN',
         message: 'Session expirée, veuillez vous reconnecter',
       });
     }
 
-    await this.prisma.session.update({
-      where: { id: session.id },
-      data: { revokedAt: new Date() },
+    // updateMany rend la rotation atomique : deux refresh simultanés ne peuvent
+    // jamais produire deux nouvelles sessions à partir du même token.
+    const revoked = await this.prisma.session.updateMany({
+      where: { id: session.id, revokedAt: null, expiresAt: { gt: now } },
+      data: { revokedAt: now },
     });
+    if (revoked.count !== 1) {
+      throw new UnauthorizedException({
+        code: 'INVALID_REFRESH_TOKEN',
+        message: 'Session expirée, veuillez vous reconnecter',
+      });
+    }
 
-    return { userId: session.userId, refresh: await this.issueRefreshToken(session.userId, ctx) };
+    const absoluteDeadline = new Date(
+      Math.min(session.expiresAt.getTime(), idleDeadline.getTime()),
+    );
+    return {
+      userId: session.userId,
+      refresh: await this.issueRefreshToken(session.userId, ctx, absoluteDeadline),
+    };
   }
 
   async revokeRefreshToken(rawToken: string): Promise<void> {
