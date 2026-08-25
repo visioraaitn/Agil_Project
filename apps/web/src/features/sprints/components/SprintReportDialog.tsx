@@ -18,7 +18,7 @@ export function SprintReportDialog({
   open,
   onClose,
   sprint,
-  projectName = 'VisioraAI Agile',
+  projectName = 'visioPlanner',
 }: SprintReportDialogProps) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<WorkItemStatus | ''>('');

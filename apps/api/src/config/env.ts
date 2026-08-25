@@ -65,7 +65,7 @@ export const envSchema = z
     SMTP_SECURE: booleanFromEnv(false),
     SMTP_USER: z.string().optional(),
     SMTP_PASSWORD: z.string().optional(),
-    MAIL_FROM: z.string().default('VisioraAI Agile <no-reply@visiora.ai>'),
+    MAIL_FROM: z.string().default('visioPlanner <no-reply@visiora.ai>'),
 
     REDIS_URL: z.string().optional(),
   })

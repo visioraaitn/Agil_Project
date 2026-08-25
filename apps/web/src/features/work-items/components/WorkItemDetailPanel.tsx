@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, X } from 'lucide-react';
+import { ChevronDown, Plus, Trash2, X } from 'lucide-react';
 import {
   ALLOWED_PARENT_TYPES,
   LABELS_FR,
@@ -331,43 +331,51 @@ function DetailBody({
           )}
         </div>
 
-        <div>
-          <label className="text-ink-700 block mb-1 text-xs font-semibold">
-            Description de cadrage — Product Owner / Project Lead
-          </label>
-          {canEdit ? (
-            <MarkdownEditor
-              value={draft.description}
-              onChange={(value) => setDraft({ ...draft, description: value })}
-              minHeight="120px"
-              onUploadImage={uploadImage}
-              placeholder="Rédiger la description en Markdown (titres, listes, code, ou coller une capture d’écran Ctrl+V)..."
-            />
-          ) : (
-            <div className="bg-surface-sunken border-border-default rounded border p-3">
-              <MarkdownViewer content={draft.description} />
-            </div>
-          )}
-        </div>
+        <details className="group border-border-default overflow-hidden rounded border" open>
+          <summary className="bg-surface-muted text-ink-700 flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs font-semibold [&::-webkit-details-marker]:hidden">
+            <span className="min-w-0 flex-1">
+              Description de cadrage — Product Owner / Project Lead
+            </span>
+            <ChevronDown className="text-ink-400 size-4 shrink-0 transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="border-border-subtle border-t p-3">
+            {canEdit ? (
+              <MarkdownEditor
+                value={draft.description}
+                onChange={(value) => setDraft({ ...draft, description: value })}
+                minHeight="120px"
+                onUploadImage={uploadImage}
+                placeholder="Rédiger la description en Markdown (titres, listes, code, ou coller une capture d’écran Ctrl+V)..."
+              />
+            ) : (
+              <div className="bg-surface-sunken border-border-default rounded border p-3">
+                <MarkdownViewer content={draft.description} />
+              </div>
+            )}
+          </div>
+        </details>
 
-        <div>
-          <label className="text-ink-700 block mb-1 text-xs font-semibold">
-            Compte rendu des personnes assignées
-          </label>
-          {canEdit ? (
-            <MarkdownEditor
-              value={draft.technicalNotes}
-              onChange={(value) => setDraft({ ...draft, technicalNotes: value })}
-              minHeight="100px"
-              onUploadImage={uploadImage}
-              placeholder="Analyse, réalisation, décisions techniques, difficultés et résultat obtenu…"
-            />
-          ) : (
-            <div className="bg-surface-sunken border-border-default rounded border p-3">
-              <MarkdownViewer content={draft.technicalNotes} />
-            </div>
-          )}
-        </div>
+        <details className="group border-border-default overflow-hidden rounded border">
+          <summary className="bg-surface-muted text-ink-700 flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs font-semibold [&::-webkit-details-marker]:hidden">
+            <span className="min-w-0 flex-1">Compte rendu des personnes assignées</span>
+            <ChevronDown className="text-ink-400 size-4 shrink-0 transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="border-border-subtle border-t p-3">
+            {canEdit ? (
+              <MarkdownEditor
+                value={draft.technicalNotes}
+                onChange={(value) => setDraft({ ...draft, technicalNotes: value })}
+                minHeight="100px"
+                onUploadImage={uploadImage}
+                placeholder="Analyse, réalisation, décisions techniques, difficultés et résultat obtenu…"
+              />
+            ) : (
+              <div className="bg-surface-sunken border-border-default rounded border p-3">
+                <MarkdownViewer content={draft.technicalNotes} />
+              </div>
+            )}
+          </div>
+        </details>
 
         <AcceptanceCriteriaEditor criteria={criteria} onChange={setCriteria} readOnly={!canEdit} />
 

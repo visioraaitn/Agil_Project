@@ -13,11 +13,18 @@ import { DeleteProjectDialog } from '../components/DeleteProjectDialog';
 import { useProject, useProjectPermissions } from '../hooks';
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {
-  ACTIVE: 'Actif',
+  ACTIVE: 'En cours',
   ON_HOLD: 'En pause',
   COMPLETED: 'Terminé',
   ARCHIVED: 'Archivé',
 };
+
+const STATUS_TONE = {
+  [ProjectStatus.ACTIVE]: 'success',
+  [ProjectStatus.ON_HOLD]: 'warning',
+  [ProjectStatus.COMPLETED]: 'accent',
+  [ProjectStatus.ARCHIVED]: 'neutral',
+} as const;
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
@@ -59,8 +66,10 @@ export function ProjectOverviewPage() {
           </p>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <Badge tone={project.status === ProjectStatus.ACTIVE ? 'success' : 'neutral'}>
-            {STATUS_LABEL[project.status]}
+          <Badge tone={STATUS_TONE[project.effectiveStatus]}>
+            {project.effectiveStatus === ProjectStatus.ACTIVE && project.activeSprint
+              ? `En cours · ${project.activeSprint.name}`
+              : STATUS_LABEL[project.effectiveStatus]}
           </Badge>
           {role && <Badge tone="accent">Mon rôle : {LABELS_FR.projectRole[role]}</Badge>}
           {can('project:update') && (

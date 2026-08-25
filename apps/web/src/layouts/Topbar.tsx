@@ -90,9 +90,8 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         <Menu className="size-5" strokeWidth={1.75} />
       </button>
       <span className="text-ink-900 text-lg font-semibold tracking-tight">
-        Visiora<span className="text-accent-500">AI</span>
+        visio<span className="text-accent-500">Planner</span>
       </span>
-      <span className="text-ink-400 text-sm">Agile</span>
 
       <GlobalSearchBox />
 

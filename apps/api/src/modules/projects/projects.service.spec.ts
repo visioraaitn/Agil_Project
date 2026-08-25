@@ -1,5 +1,64 @@
 import { ProjectsService } from './projects.service';
-import { NotificationType } from '@visiora/shared';
+import { GlobalRole, NotificationType, ProjectStatus } from '@visiora/shared';
+
+describe('ProjectsService.getById', () => {
+  const project = {
+    id: 'project-1',
+    key: 'VIS',
+    name: 'visioPlanner',
+    description: null,
+    company: null,
+    status: ProjectStatus.ACTIVE,
+    startDate: null,
+    targetDate: null,
+    color: null,
+    createdAt: new Date('2026-08-25T00:00:00.000Z'),
+    _count: { members: 1 },
+  };
+  const user = {
+    id: 'user-1',
+    email: 'user@example.com',
+    name: 'User Test',
+    jobTitle: null,
+    avatarUrl: null,
+    globalRole: GlobalRole.MEMBER,
+    isSuperAdmin: false,
+  };
+
+  function setup(activeSprint: { id: string; name: string } | null) {
+    const prisma = {
+      project: {
+        findUnique: jest.fn().mockResolvedValue({
+          ...project,
+          sprints: activeSprint ? [activeSprint] : [],
+        }),
+      },
+    };
+    const access = { getProjectRole: jest.fn().mockResolvedValue(null) };
+    const service = new ProjectsService(
+      prisma as unknown as ConstructorParameters<typeof ProjectsService>[0],
+      access as unknown as ConstructorParameters<typeof ProjectsService>[1],
+      {} as ConstructorParameters<typeof ProjectsService>[2],
+      {} as ConstructorParameters<typeof ProjectsService>[3],
+    );
+    return service;
+  }
+
+  it('affiche automatiquement un projet sans sprint actif comme étant en pause', async () => {
+    const result = await setup(null).getById(user, project.id);
+
+    expect(result.effectiveStatus).toBe(ProjectStatus.ON_HOLD);
+    expect(result.activeSprint).toBeNull();
+  });
+
+  it('affiche le nom du sprint courant pour un projet en cours', async () => {
+    const activeSprint = { id: 'sprint-1', name: 'Sprint 4' };
+    const result = await setup(activeSprint).getById(user, project.id);
+
+    expect(result.effectiveStatus).toBe(ProjectStatus.ACTIVE);
+    expect(result.activeSprint).toEqual(activeSprint);
+  });
+});
 
 describe('ProjectsService.addMember', () => {
   it('envoie une notification et un email quand un membre est ajouté au projet', async () => {

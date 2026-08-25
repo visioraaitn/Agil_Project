@@ -9,6 +9,7 @@ COPY apps/api/prisma apps/api/prisma
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/tsconfig/package.json packages/tsconfig/package.json
 RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @visiora/api prisma:generate
 
 FROM deps AS build
 COPY . .

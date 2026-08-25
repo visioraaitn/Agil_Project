@@ -23,14 +23,16 @@ import { ChevronDown, ChevronRight, Layers, Plus, SlidersHorizontal } from 'luci
 import {
   LABELS_FR,
   Priority,
+  SprintStatus,
   WorkItemStatus,
   type BoardColumn,
   type WorkItemSummary,
 } from '@visiora/shared';
 import { Button } from '@/components/ui/button';
 import { Avatar } from '@/components/common/Avatar';
-import { ErrorState, LoadingState } from '@/components/common/StateMessage';
+import { EmptyState, ErrorState, LoadingState } from '@/components/common/StateMessage';
 import { useProjectMembers, useProjectPermissions } from '@/features/projects/hooks';
+import { useSprints } from '@/features/sprints/hooks';
 import { CreateWorkItemDialog } from '@/features/work-items/components/CreateWorkItemDialog';
 import { FiltersBar } from '@/features/work-items/components/FiltersBar';
 import { WorkItemCard } from '@/features/work-items/components/WorkItemCard';
@@ -63,11 +65,21 @@ export function BoardPage() {
   const [collapsedLanes, setCollapsedLanes] = useState<Set<string>>(new Set());
   const [boardConfig, setBoardConfig] = useState<BoardConfig>(() => loadBoardConfig(projectKey));
 
-  const { data: columns, isLoading, error } = useBoard(projectKey, filters);
+  const { data: sprints, isLoading: sprintsLoading, error: sprintsError } = useSprints(projectKey);
+  const activeSprint = sprints?.find((sprint) => sprint.status === SprintStatus.ACTIVE) ?? null;
+  const boardFilters = useMemo(
+    () => ({ ...filters, sprintId: activeSprint?.id }),
+    [activeSprint?.id, filters],
+  );
+  const {
+    data: columns,
+    isLoading,
+    error,
+  } = useBoard(projectKey, boardFilters, Boolean(activeSprint));
   const { data: tree } = useBacklog(projectKey, {});
   const { data: members } = useProjectMembers(projectKey);
   const { can } = useProjectPermissions(projectKey);
-  const move = useMoveWorkItem(projectKey, filters);
+  const move = useMoveWorkItem(projectKey, boardFilters);
 
   const canMove = can('workitem:move');
   const canCreate = can('workitem:create');
@@ -185,8 +197,21 @@ export function BoardPage() {
     });
   };
 
-  if (isLoading) return <LoadingState />;
-  if (error) return <ErrorState error={error} />;
+  if (sprintsLoading || isLoading) return <LoadingState />;
+  if (sprintsError || error) return <ErrorState error={sprintsError ?? error} />;
+  if (!activeSprint) {
+    return (
+      <div className="flex h-full flex-col">
+        <header className="border-border-subtle border-b px-4 py-2">
+          <h1 className="text-ink-900 text-xl font-semibold">Task Board</h1>
+        </header>
+        <EmptyState
+          title="Aucun sprint actif"
+          description="Activez un sprint et affectez-y des User Stories pour alimenter le board."
+        />
+      </div>
+    );
+  }
   if (!columns) return null;
 
   return (
@@ -195,6 +220,9 @@ export function BoardPage() {
         <h1 className="text-ink-900 text-xl font-semibold">Task Board</h1>
         <span className="text-ink-400 text-sm">
           {columns.reduce((total, column) => total + column.count, 0)} ticket(s)
+        </span>
+        <span className="bg-accent-50 text-accent-700 rounded px-2 py-0.5 text-xs font-semibold">
+          {activeSprint.name}
         </span>
 
         {/* Sélecteur de Swimlanes */}
@@ -351,7 +379,7 @@ export function BoardPage() {
         projectRef={projectKey}
         candidates={tree ?? []}
         defaultStatus={WorkItemStatus.TODO}
-        defaultSprintId={filters.sprintId}
+        defaultSprintId={activeSprint.id}
       />
 
       <WorkItemDetailPanel

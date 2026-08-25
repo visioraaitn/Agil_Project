@@ -109,7 +109,7 @@ export class EmailService {
     }
 
     const from =
-      this.config.get('MAIL_FROM', { infer: true }) || 'VisioraAI Agile <no-reply@visiora.ai>';
+      this.config.get('MAIL_FROM', { infer: true }) || 'visioPlanner <no-reply@visiora.ai>';
 
     try {
       await transporter.sendMail({
@@ -133,7 +133,7 @@ export class EmailService {
     const body = [
       `Bonjour ${account.name},`,
       '',
-      'Votre compte VisioraAI Agile a été créé.',
+      'Votre compte visioPlanner a été créé.',
       `Email : ${account.email}`,
       `Mot de passe initial : ${account.initialPassword}`,
       '',
@@ -143,6 +143,6 @@ export class EmailService {
       "Si vous n'attendiez pas la création de ce compte, contactez votre administrateur.",
     ].join('\n');
 
-    return this.sendNotification(account.email, 'Votre compte VisioraAI Agile', body);
+    return this.sendNotification(account.email, 'Votre compte visioPlanner', body);
   }
 }

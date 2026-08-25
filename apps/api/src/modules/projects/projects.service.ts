@@ -14,6 +14,7 @@ import {
   ProjectRole,
   ProjectStatus,
   ProjectSummary,
+  SprintStatus,
   UpdateProjectInput,
   UpdateProjectMemberInput,
 } from '@visiora/shared';
@@ -34,6 +35,12 @@ const PROJECT_FIELDS = {
   color: true,
   createdAt: true,
   _count: { select: { members: true } },
+  sprints: {
+    where: { status: SprintStatus.ACTIVE },
+    select: { id: true, name: true },
+    orderBy: { startDate: 'desc' },
+    take: 1,
+  },
 } satisfies Prisma.ProjectSelect;
 
 type ProjectRow = Prisma.ProjectGetPayload<{ select: typeof PROJECT_FIELDS }>;
@@ -73,7 +80,7 @@ export class ProjectsService {
 
     const where: Prisma.ProjectWhereInput = {
       ...(restrictToMemberships ? { members: { some: { userId: user.id } } } : {}),
-      ...(query.status ? { status: query.status } : {}),
+      ...(query.status ? { AND: [projectStatusFilter(query.status)] } : {}),
       ...(query.search
         ? {
             OR: [
@@ -352,13 +359,22 @@ function toProjectSummary(
   project: ProjectRow,
   currentUserRole: ProjectRole | null,
 ): ProjectSummary {
+  const activeSprint = project.sprints[0] ?? null;
+  const persistedStatus = project.status as ProjectStatus;
+  const effectiveStatus =
+    persistedStatus === ProjectStatus.ACTIVE && !activeSprint
+      ? ProjectStatus.ON_HOLD
+      : persistedStatus;
+
   return {
     id: project.id,
     key: project.key,
     name: project.name,
     description: project.description,
     company: project.company,
-    status: project.status as ProjectStatus,
+    status: persistedStatus,
+    effectiveStatus,
+    activeSprint,
     startDate: project.startDate?.toISOString() ?? null,
     targetDate: project.targetDate?.toISOString() ?? null,
     color: project.color,
@@ -366,6 +382,27 @@ function toProjectSummary(
     currentUserRole,
     createdAt: project.createdAt.toISOString(),
   };
+}
+
+function projectStatusFilter(status?: ProjectStatus): Prisma.ProjectWhereInput {
+  if (status === ProjectStatus.ACTIVE) {
+    return {
+      status: ProjectStatus.ACTIVE,
+      sprints: { some: { status: SprintStatus.ACTIVE } },
+    };
+  }
+  if (status === ProjectStatus.ON_HOLD) {
+    return {
+      OR: [
+        { status: ProjectStatus.ON_HOLD },
+        {
+          status: ProjectStatus.ACTIVE,
+          sprints: { none: { status: SprintStatus.ACTIVE } },
+        },
+      ],
+    };
+  }
+  return status ? { status } : {};
 }
 
 function toMemberSummary(member: MemberRow): ProjectMemberSummary {

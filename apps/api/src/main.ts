@@ -45,10 +45,7 @@ async function bootstrap(): Promise<void> {
   app.use(helmet());
   app.use((_request: Request, response: Response, next: NextFunction) => {
     // Les donnees de l'API sont privees : pas d'indexation ni de cache navigateur/intermediaire.
-    response.setHeader(
-      'X-Robots-Tag',
-      'noindex, nofollow, noarchive, nosnippet, noimageindex',
-    );
+    response.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet, noimageindex');
     response.setHeader('Cache-Control', 'no-store');
     next();
   });
@@ -77,7 +74,7 @@ async function bootstrap(): Promise<void> {
 
   if (nodeEnv !== 'production') {
     const swaggerConfig = new DocumentBuilder()
-      .setTitle('VisioraAI Agile API')
+      .setTitle('visioPlanner API')
       .setDescription('Plateforme de gestion de projets agile — API REST')
       .setVersion('0.1.0')
       .addBearerAuth()

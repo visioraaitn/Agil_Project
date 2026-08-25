@@ -99,6 +99,10 @@ export interface ProjectSummary {
   description: string | null;
   company: string | null;
   status: ProjectStatus;
+  /** Statut affiché : un projet actif sans sprint actif est automatiquement en pause. */
+  effectiveStatus: ProjectStatus;
+  /** Sprint actuellement actif, utilisé pour expliciter l'état « En cours ». */
+  activeSprint: { id: string; name: string } | null;
   startDate: string | null;
   targetDate: string | null;
   color: string | null;

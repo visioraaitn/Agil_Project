@@ -16,6 +16,7 @@ import {
   Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { ProjectStatus, type ProjectSummary } from '@visiora/shared';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/features/auth/use-auth';
 import { useProjects } from '@/features/projects/hooks';
@@ -35,6 +36,15 @@ const PROJECT_NAV: NavItem[] = [
   { to: 'repos', label: 'Repos & PR', icon: GitPullRequest },
   { to: 'dashboards', label: 'Dashboards', icon: PieChart },
 ];
+
+function projectStateLabel(project: ProjectSummary): string {
+  if (project.effectiveStatus === ProjectStatus.ACTIVE && project.activeSprint) {
+    return `En cours · ${project.activeSprint.name}`;
+  }
+  if (project.effectiveStatus === ProjectStatus.ON_HOLD) return 'En pause';
+  if (project.effectiveStatus === ProjectStatus.COMPLETED) return 'Terminé';
+  return 'Archivé';
+}
 
 const linkClass =
   (collapsed: boolean) =>
@@ -128,7 +138,7 @@ export function Sidebar({ collapsed, mobileOpen, onMobileClose, onCollapseToggle
                 {activeProject?.name ?? 'Tous les projets'}
               </span>
               <span className="text-ink-400 block truncate text-xs">
-                {activeProject?.company ?? 'VisioraAI'}
+                {activeProject ? projectStateLabel(activeProject) : 'visioPlanner'}
               </span>
             </span>
             <ChevronDown
@@ -163,8 +173,11 @@ export function Sidebar({ collapsed, mobileOpen, onMobileClose, onCollapseToggle
                     >
                       {project.key.slice(0, 2)}
                     </span>
-                    <span className="text-ink-700 min-w-0 flex-1 truncate text-base">
-                      {project.name}
+                    <span className="min-w-0 flex-1">
+                      <span className="text-ink-700 block truncate text-base">{project.name}</span>
+                      <span className="text-ink-400 block truncate text-xs">
+                        {projectStateLabel(project)}
+                      </span>
                     </span>
                     {project.key === projectKey && (
                       <Check className="text-accent-600 size-3.5 shrink-0" strokeWidth={2.5} />

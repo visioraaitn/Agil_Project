@@ -13,6 +13,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  database-changes:
+    name: Detect database changes
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.filter.outputs.database }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Detect Prisma changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            database:
+              - 'apps/api/prisma/schema.prisma'
+              - 'apps/api/prisma/migrations/**'
+
   checks:
     name: Lint, test and build
     runs-on: ubuntu-latest
@@ -57,9 +76,26 @@ jobs:
       - name: Build
         run: pnpm build
 
+  migrate:
+    name: Migrate production database
+    needs:
+      - checks
+      - database-changes
+    if: needs.database-changes.outputs.changed == 'true'
+    uses: ./.github/workflows/database-production.yml
+    secrets: inherit
+
   deploy:
     name: Deploy production
-    needs: checks
+    needs:
+      - checks
+      - database-changes
+      - migrate
+    if: >-
+      always() &&
+      needs.checks.result == 'success' &&
+      needs.database-changes.result == 'success' &&
+      (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production

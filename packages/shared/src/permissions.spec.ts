@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GlobalRole, ProjectRole } from './enums';
-import { can, permissionsFor, PERMISSIONS, ROLE_PERMISSIONS } from './permissions';
+import { can, PERMISSIONS, ROLE_PERMISSIONS } from './permissions';
 
 const member = (projectRole: ProjectRole | null) => ({
   globalRole: GlobalRole.MEMBER,

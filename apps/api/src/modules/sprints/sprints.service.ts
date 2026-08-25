@@ -24,7 +24,10 @@ import {
 export class SprintsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(projectId: string, query: ListSprintsQuery): Promise<ReturnType<typeof toSprintSummary>[]> {
+  async list(
+    projectId: string,
+    query: ListSprintsQuery,
+  ): Promise<ReturnType<typeof toSprintSummary>[]> {
     const rows = await this.prisma.sprint.findMany({
       where: { projectId, ...(query.status ? { status: query.status } : {}) },
       select: SPRINT_SUMMARY_SELECT,
@@ -60,7 +63,11 @@ export class SprintsService {
     return this.getById(projectId, sprint.id);
   }
 
-  async update(projectId: string, sprintId: string, input: UpdateSprintInput): Promise<SprintDetail> {
+  async update(
+    projectId: string,
+    sprintId: string,
+    input: UpdateSprintInput,
+  ): Promise<SprintDetail> {
     const existing = await this.prisma.sprint.findFirst({
       where: { id: sprintId, projectId },
       select: { id: true, status: true, startDate: true, endDate: true },
@@ -76,6 +83,19 @@ export class SprintsService {
     const startDate = input.startDate ?? existing.startDate;
     const endDate = input.endDate ?? existing.endDate;
     await this.assertNoDateOverlap(projectId, startDate, endDate, sprintId);
+
+    if (input.status === SprintStatus.ACTIVE) {
+      const activeSprint = await this.prisma.sprint.findFirst({
+        where: { projectId, status: SprintStatus.ACTIVE, id: { not: sprintId } },
+        select: { id: true },
+      });
+      if (activeSprint) {
+        throw new BadRequestException({
+          code: 'ACTIVE_SPRINT_EXISTS',
+          message: 'Clôturez le sprint actif avant d’en démarrer un autre',
+        });
+      }
+    }
 
     await this.prisma.sprint.update({
       where: { id: sprintId },

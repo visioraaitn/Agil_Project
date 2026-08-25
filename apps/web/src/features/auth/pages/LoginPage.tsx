@@ -41,7 +41,7 @@ export function LoginPage() {
       <div className="bg-surface border-border-default w-full max-w-sm rounded border p-6 shadow-sm">
         <div className="mb-5">
           <p className="text-ink-900 text-2xl font-semibold tracking-tight">
-            Visiora<span className="text-accent-500">AI</span>
+            visio<span className="text-accent-500">Planner</span>
           </p>
           <p className="text-ink-500 text-base">Plateforme de gestion de projets agile</p>
         </div>

@@ -26,10 +26,11 @@ export function useBacklog(projectRef: string, filters: WorkItemFilters) {
   });
 }
 
-export function useBoard(projectRef: string, filters: WorkItemFilters) {
+export function useBoard(projectRef: string, filters: WorkItemFilters, enabled = true) {
   return useQuery({
     queryKey: workItemKeys.board(projectRef, filters),
     queryFn: () => workItemsApi.board(projectRef, filters),
+    enabled,
   });
 }
 
@@ -134,11 +135,7 @@ function moveCardInCache(
     const anchorId = input.afterId ?? input.beforeId;
     const anchorIndex = anchorId ? withoutCard.findIndex((item) => item.id === anchorId) : -1;
     const insertAt =
-      anchorIndex === -1
-        ? withoutCard.length
-        : input.afterId
-          ? anchorIndex
-          : anchorIndex + 1;
+      anchorIndex === -1 ? withoutCard.length : input.afterId ? anchorIndex : anchorIndex + 1;
 
     const items = [...withoutCard];
     items.splice(insertAt, 0, moved);

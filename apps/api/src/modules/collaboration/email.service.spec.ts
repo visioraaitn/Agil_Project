@@ -203,7 +203,7 @@ describe('EmailService', () => {
       expect(mockTransporter.sendMail).toHaveBeenCalledWith(
         expect.objectContaining({
           to: 'new.user@example.com',
-          subject: 'Votre compte VisioraAI Agile',
+          subject: 'Votre compte visioPlanner',
           text: expect.stringContaining('Mot de passe initial : Initial1234'),
         }),
       );

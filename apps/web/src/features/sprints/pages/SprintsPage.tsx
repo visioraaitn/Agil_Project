@@ -1,15 +1,41 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { CheckCircle2, FileText, Flag, Plus, Save, XCircle } from 'lucide-react';
-import type { RetrospectiveItemInput, SprintDetail, SprintStatus } from '@visiora/shared';
-import { LABELS_FR, RetroCategory, SprintStatus as SprintStatusEnum } from '@visiora/shared';
-import { EmptyState, ErrorState, InlineError, LoadingState } from '@/components/common/StateMessage';
+import {
+  CheckCircle2,
+  FileText,
+  Flag,
+  Play,
+  Plus,
+  Save,
+  Search,
+  UserPlus,
+  XCircle,
+} from 'lucide-react';
+import type {
+  BacklogNode,
+  RetrospectiveItemInput,
+  SprintDetail,
+  SprintStatus,
+} from '@visiora/shared';
+import {
+  LABELS_FR,
+  RetroCategory,
+  SprintStatus as SprintStatusEnum,
+  WorkItemType,
+} from '@visiora/shared';
+import {
+  EmptyState,
+  ErrorState,
+  InlineError,
+  LoadingState,
+} from '@/components/common/StateMessage';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
 import { Input, Textarea } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { useProjectPermissions } from '@/features/projects/hooks';
 import { StatusPill, StoryPoints } from '@/features/work-items/components/WorkItemChrome';
+import { useBacklog, useUpdateWorkItem } from '@/features/work-items/hooks';
 import { SprintReportDialog } from '../components/SprintReportDialog';
 import {
   useCloseSprint,
@@ -17,6 +43,7 @@ import {
   useSprint,
   useSprints,
   useUpdateRetrospective,
+  useUpdateSprint,
 } from '../hooks';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -29,6 +56,7 @@ export function SprintsPage() {
   const { data: selected, isLoading: detailLoading } = useSprint(projectKey, selectedId);
   const { can } = useProjectPermissions(projectKey);
   const closeSprint = useCloseSprint(projectKey);
+  const updateSprint = useUpdateSprint(projectKey);
 
   useEffect(() => {
     if (selectedId || !sprints?.length) return;
@@ -47,7 +75,12 @@ export function SprintsPage() {
         <header className="border-border-subtle flex items-center gap-2 border-b px-3 py-2">
           <h1 className="text-ink-900 text-xl font-semibold">Sprints</h1>
           {can('sprint:manage') && (
-            <Button variant="primary" size="sm" className="ml-auto" onClick={() => setCreateOpen(true)}>
+            <Button
+              variant="primary"
+              size="sm"
+              className="ml-auto"
+              onClick={() => setCreateOpen(true)}
+            >
               <Plus className="size-3.5" strokeWidth={2.5} />
               Nouveau
             </Button>
@@ -90,6 +123,16 @@ export function SprintsPage() {
           <SprintDetailView
             sprint={selected}
             canClose={can('sprint:close')}
+            canAssign={can('workitem:update')}
+            canStart={can('sprint:manage')}
+            onStartSprint={() =>
+              updateSprint.mutate({
+                sprintId: selected.id,
+                input: { status: SprintStatusEnum.ACTIVE },
+              })
+            }
+            starting={updateSprint.isPending}
+            startError={updateSprint.error}
             onCloseSprint={() => closeSprint.mutate({ sprintId: selected.id, input: {} })}
             closing={closeSprint.isPending}
             projectRef={projectKey}
@@ -110,17 +153,31 @@ export function SprintsPage() {
 function SprintDetailView({
   sprint,
   canClose,
+  canAssign,
+  canStart,
+  starting,
+  startError,
+  onStartSprint,
   closing,
   onCloseSprint,
   projectRef,
 }: {
   sprint: SprintDetail;
   canClose: boolean;
+  canAssign: boolean;
+  canStart: boolean;
+  starting: boolean;
+  startError: unknown;
+  onStartSprint: () => void;
   closing: boolean;
   onCloseSprint: () => void;
   projectRef: string;
 }) {
   const [reportOpen, setReportOpen] = useState(false);
+  const [assignmentOpen, setAssignmentOpen] = useState(false);
+  const { data: backlog, isLoading: backlogLoading } = useBacklog(projectRef, {
+    type: WorkItemType.STORY,
+  });
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -133,6 +190,18 @@ function SprintDetailView({
             </p>
           </div>
           <SprintBadge status={sprint.status} />
+          {canStart && sprint.status === SprintStatusEnum.PLANNED && (
+            <Button variant="primary" onClick={onStartSprint} loading={starting}>
+              <Play className="size-3.5" strokeWidth={2} />
+              Démarrer
+            </Button>
+          )}
+          {canAssign && sprint.status !== SprintStatusEnum.COMPLETED && (
+            <Button variant="secondary" onClick={() => setAssignmentOpen(true)}>
+              <UserPlus className="size-3.5" strokeWidth={2} />
+              Affecter des US
+            </Button>
+          )}
           <Button
             variant="ghost"
             onClick={() => setReportOpen(true)}
@@ -151,6 +220,8 @@ function SprintDetailView({
         {sprint.goal && <p className="text-ink-700 mt-2 max-w-3xl text-base">{sprint.goal}</p>}
       </section>
 
+      <InlineError error={startError} />
+
       <SprintReportDialog
         open={reportOpen}
         onClose={() => setReportOpen(false)}
@@ -158,9 +229,21 @@ function SprintDetailView({
         projectName={projectRef}
       />
 
+      <SprintStoriesDialog
+        open={assignmentOpen}
+        onClose={() => setAssignmentOpen(false)}
+        projectRef={projectRef}
+        sprint={sprint}
+        candidates={backlog ?? []}
+        loading={backlogLoading}
+      />
+
       <section className="grid grid-cols-4 gap-3">
         <Metric label="Tickets" value={`${sprint.completedItems}/${sprint.totalItems}`} />
-        <Metric label="Points live" value={`${sprint.liveCompletedPoints}/${sprint.liveCommittedPoints}`} />
+        <Metric
+          label="Points live"
+          value={`${sprint.liveCompletedPoints}/${sprint.liveCommittedPoints}`}
+        />
         <Metric label="Points engages" value={sprint.committedPoints ?? '-'} />
         <Metric label="Points termines" value={sprint.completedPoints ?? '-'} />
       </section>
@@ -188,6 +271,149 @@ function SprintDetailView({
 
       <RetrospectiveEditor projectRef={projectRef} sprint={sprint} />
     </div>
+  );
+}
+
+function SprintStoriesDialog({
+  open,
+  onClose,
+  projectRef,
+  sprint,
+  candidates,
+  loading,
+}: {
+  open: boolean;
+  onClose: () => void;
+  projectRef: string;
+  sprint: SprintDetail;
+  candidates: BacklogNode[];
+  loading: boolean;
+}) {
+  const updateWorkItem = useUpdateWorkItem(projectRef);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
+  const [saveError, setSaveError] = useState<unknown>(null);
+
+  const stories = useMemo(
+    () => flattenBacklog(candidates).filter((item) => item.type === WorkItemType.STORY),
+    [candidates],
+  );
+  const availableStories = useMemo(
+    () => stories.filter((item) => item.sprintId === null || item.sprintId === sprint.id),
+    [sprint.id, stories],
+  );
+  const unavailableCount = stories.length - availableStories.length;
+  const normalizedSearch = search.trim().toLocaleLowerCase('fr');
+  const visibleStories = availableStories.filter(
+    (item) =>
+      !normalizedSearch ||
+      `${item.key} ${item.title}`.toLocaleLowerCase('fr').includes(normalizedSearch),
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    setSelectedIds(
+      new Set(
+        availableStories.filter((item) => item.sprintId === sprint.id).map((item) => item.id),
+      ),
+    );
+    setSearch('');
+    setSaveError(null);
+  }, [open, sprint.id, availableStories]);
+
+  const toggle = (itemId: string, checked: boolean) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(itemId);
+      else next.delete(itemId);
+      return next;
+    });
+  };
+
+  const save = async () => {
+    setSaveError(null);
+    const changes = availableStories.filter((item) => {
+      const wasSelected = item.sprintId === sprint.id;
+      return wasSelected !== selectedIds.has(item.id);
+    });
+
+    try {
+      await Promise.all(
+        changes.map((item) =>
+          updateWorkItem.mutateAsync({
+            itemId: item.id,
+            input: { sprintId: selectedIds.has(item.id) ? sprint.id : null },
+          }),
+        ),
+      );
+      onClose();
+    } catch (error) {
+      setSaveError(error);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      title={`Affecter des User Stories · ${sprint.name}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button variant="primary" onClick={save} loading={updateWorkItem.isPending}>
+            Enregistrer les affectations
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        <InlineError error={saveError} />
+        <div className="border-border-strong bg-surface flex h-7 items-center gap-1.5 rounded border px-2">
+          <Search className="text-ink-400 size-3.5" />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Rechercher une User Story…"
+            aria-label="Rechercher une User Story à affecter"
+            className="text-ink-700 placeholder:text-ink-400 w-full bg-transparent text-sm outline-none"
+          />
+        </div>
+
+        {unavailableCount > 0 && (
+          <p className="text-ink-500 text-xs">
+            {unavailableCount} User Story(s) déjà affectée(s) à un autre sprint ne sont pas
+            proposées.
+          </p>
+        )}
+
+        <div className="border-border-default scrollbar-thin max-h-80 overflow-y-auto rounded border">
+          {loading ? (
+            <LoadingState />
+          ) : visibleStories.length === 0 ? (
+            <EmptyState title="Aucune User Story disponible" />
+          ) : (
+            visibleStories.map((item) => (
+              <label
+                key={item.id}
+                className="border-border-subtle hover:bg-surface-muted flex cursor-pointer items-center gap-2 border-b px-3 py-2 last:border-b-0"
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(item.id)}
+                  onChange={(event) => toggle(item.id, event.target.checked)}
+                  className="size-3.5"
+                />
+                <span className="text-ink-400 w-24 shrink-0 text-xs font-semibold">{item.key}</span>
+                <span className="text-ink-900 min-w-0 flex-1 truncate text-sm">{item.title}</span>
+                <StatusPill status={item.status} />
+              </label>
+            ))
+          )}
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -228,7 +454,9 @@ function CreateSprintDialog({
       onClose={onClose}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Annuler</Button>
+          <Button variant="ghost" onClick={onClose}>
+            Annuler
+          </Button>
           <Button variant="primary" onClick={submit} loading={createSprint.isPending}>
             Creer
           </Button>
@@ -241,7 +469,11 @@ function CreateSprintDialog({
           <Input id="sprint-name" value={name} onChange={(event) => setName(event.target.value)} />
         </Field>
         <Field label="Objectif" htmlFor="sprint-goal">
-          <Textarea id="sprint-goal" value={goal} onChange={(event) => setGoal(event.target.value)} />
+          <Textarea
+            id="sprint-goal"
+            value={goal}
+            onChange={(event) => setGoal(event.target.value)}
+          />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Debut" htmlFor="sprint-start" required>
@@ -264,6 +496,10 @@ function CreateSprintDialog({
       </div>
     </Modal>
   );
+}
+
+function flattenBacklog(nodes: BacklogNode[]): BacklogNode[] {
+  return nodes.flatMap((node) => [node, ...flattenBacklog(node.children)]);
 }
 
 function RetrospectiveEditor({ projectRef, sprint }: { projectRef: string; sprint: SprintDetail }) {
@@ -401,7 +637,9 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
 
 function formatDate(value: string | null) {
   if (!value) return '-';
-  return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }).format(
-    new Date(value),
-  );
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(value));
 }

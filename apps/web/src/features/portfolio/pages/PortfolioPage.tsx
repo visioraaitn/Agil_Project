@@ -19,7 +19,7 @@ const STATUS_TONE = {
 } as const;
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {
-  ACTIVE: 'Actif',
+  ACTIVE: 'En cours',
   ON_HOLD: 'En pause',
   COMPLETED: 'Terminé',
   ARCHIVED: 'Archivé',
@@ -55,8 +55,8 @@ export function PortfolioPage() {
     const projects = [...(data?.items ?? [])];
     const direction = sortOrder === 'asc' ? 1 : -1;
     return projects.sort((left, right) => {
-      const leftValue = left[sortBy] ?? '';
-      const rightValue = right[sortBy] ?? '';
+      const leftValue = sortBy === 'status' ? left.effectiveStatus : (left[sortBy] ?? '');
+      const rightValue = sortBy === 'status' ? right.effectiveStatus : (right[sortBy] ?? '');
       return (
         String(leftValue).localeCompare(String(rightValue), 'fr', { numeric: true }) * direction
       );
@@ -188,7 +188,11 @@ function ProjectTable({ projects }: { projects: ProjectSummary[] }) {
             </td>
             <td className="text-ink-500 px-3 py-1.5">{project.company ?? '—'}</td>
             <td className="px-3 py-1.5">
-              <Badge tone={STATUS_TONE[project.status]}>{STATUS_LABEL[project.status]}</Badge>
+              <Badge tone={STATUS_TONE[project.effectiveStatus]}>
+                {project.effectiveStatus === ProjectStatus.ACTIVE && project.activeSprint
+                  ? `En cours · ${project.activeSprint.name}`
+                  : STATUS_LABEL[project.effectiveStatus]}
+              </Badge>
             </td>
             <td className="px-3 py-1.5">
               {project.currentUserRole ? (

@@ -153,7 +153,7 @@ export class UsersService {
         data: {
           userId: createdUser.id,
           type: NotificationType.ACCOUNT_CREATED,
-          title: 'Bienvenue sur VisioraAI Agile',
+          title: 'Bienvenue sur visioPlanner',
           body: 'Votre compte est prêt. Consultez votre email pour vos informations de connexion.',
           entityType: EntityType.USER,
           entityId: createdUser.id,
