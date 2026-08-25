@@ -8,10 +8,11 @@ export const PERMISSION_KEY = 'rbac:permission';
  *
  * Sur une route contenant `:projectId`, le rôle de l'utilisateur SUR CE PROJET
  * est résolu en base à chaque requête, puis confronté à la matrice. Aucun test
- * de rôle en dur (`role === 'PRODUCT_OWNER'`) ne doit exister ailleurs : la
+ * de rôle en dur (`role === 'PROJECT_LEAD'`) ne doit exister ailleurs : la
  * matrice est la seule autorité.
  *
  *   @RequirePermission('pr:approve')
  *   @Post(':projectId/pull-requests/:id/approve')
  */
-export const RequirePermission = (permission: Permission) => SetMetadata(PERMISSION_KEY, permission);
+export const RequirePermission = (permission: Permission) =>
+  SetMetadata(PERMISSION_KEY, permission);

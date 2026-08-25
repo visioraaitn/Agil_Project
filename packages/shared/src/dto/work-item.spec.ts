@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { WorkItemType } from '../enums';
-import { canBeChildOf, createWorkItemSchema, moveWorkItemSchema, REQUIRES_PARENT } from './work-item';
+import {
+  canBeChildOf,
+  createWorkItemSchema,
+  moveWorkItemSchema,
+  REQUIRES_PARENT,
+  workItemFiltersSchema,
+} from './work-item';
 
 describe('hiérarchie des tickets', () => {
   it('rattache une story à un epic, jamais l’inverse', () => {
@@ -53,6 +59,26 @@ describe('createWorkItemSchema', () => {
   it('refuse un titre trop court', () => {
     const result = createWorkItemSchema.safeParse({ type: WorkItemType.STORY, title: 'ab' });
     expect(result.success).toBe(false);
+  });
+
+  it('accepte plusieurs personnes assignées sans imposer de doublon côté client', () => {
+    const result = createWorkItemSchema.safeParse({
+      type: WorkItemType.STORY,
+      title: 'Développer la recherche',
+      assigneeIds: ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'],
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('workItemFiltersSchema', () => {
+  it('valide le filtre créateur et un tri explicite', () => {
+    const result = workItemFiltersSchema.safeParse({
+      creatorId: '11111111-1111-4111-8111-111111111111',
+      sortBy: 'createdAt',
+      sortOrder: 'desc',
+    });
+    expect(result.success).toBe(true);
   });
 });
 

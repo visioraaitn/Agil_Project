@@ -1,7 +1,7 @@
 import { forwardRef } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import type { WorkItemSummary } from '@visiora/shared';
-import { Avatar } from '@/components/common/Avatar';
+import { AvatarStack } from '@/components/common/AvatarStack';
 import { cn } from '@/lib/utils';
 import { LabelChips, PriorityBadge, StoryPoints, TypeIcon } from './WorkItemChrome';
 
@@ -49,6 +49,10 @@ export const WorkItemCard = forwardRef<HTMLDivElement, WorkItemCardProps>(functi
         </p>
       )}
 
+      <p className="text-ink-400 mt-1 truncate text-xs" title={item.reporter.name}>
+        Créé par {item.reporter.name}
+      </p>
+
       <div className="mt-2 flex items-center gap-2">
         <span className="text-ink-400 text-xs font-semibold">{item.key}</span>
         <PriorityBadge priority={item.priority} />
@@ -58,16 +62,9 @@ export const WorkItemCard = forwardRef<HTMLDivElement, WorkItemCardProps>(functi
           </span>
         )}
         <span className="ml-auto">
-          {item.assignee ? (
-            <Avatar name={item.assignee.name} avatarUrl={item.assignee.avatarUrl} />
-          ) : (
-            <span className="border-border-strong text-ink-400 flex size-6 items-center justify-center rounded-full border border-dashed text-xs">
-              ?
-            </span>
-          )}
+          <AvatarStack users={item.assignees} />
         </span>
       </div>
     </div>
   );
 });
-

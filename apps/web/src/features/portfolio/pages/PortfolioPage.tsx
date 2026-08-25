@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, Search } from 'lucide-react';
 import { ProjectStatus, type ProjectSummary } from '@visiora/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/input';
 import { EmptyState, ErrorState, LoadingState } from '@/components/common/StateMessage';
 import { RoleBadge } from '@/components/common/RoleBadge';
 import { useAuth } from '@/features/auth/use-auth';
@@ -26,27 +27,49 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+  return new Date(iso).toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 /** B.2 · Vue portefeuille : tous les projets sur un tableau unique. */
 export function PortfolioPage() {
   const { isAdmin } = useAuth();
   const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<ProjectStatus | ''>('');
+  const [sortBy, setSortBy] = useState<
+    'name' | 'company' | 'status' | 'memberCount' | 'startDate' | 'targetDate'
+  >('name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const { data, isLoading, error } = useProjects({
     search: search.trim() || undefined,
+    status: status || undefined,
     pageSize: 100,
   });
 
+  const sortedProjects = useMemo(() => {
+    const projects = [...(data?.items ?? [])];
+    const direction = sortOrder === 'asc' ? 1 : -1;
+    return projects.sort((left, right) => {
+      const leftValue = left[sortBy] ?? '';
+      const rightValue = right[sortBy] ?? '';
+      return (
+        String(leftValue).localeCompare(String(rightValue), 'fr', { numeric: true }) * direction
+      );
+    });
+  }, [data?.items, sortBy, sortOrder]);
+
   return (
     <div className="flex h-full flex-col">
-      <header className="border-border-subtle flex shrink-0 items-center gap-3 border-b px-4 py-2">
+      <header className="border-border-subtle flex shrink-0 flex-wrap items-center gap-3 border-b px-4 py-2">
         <h1 className="text-ink-900 text-xl font-semibold">Portefeuille</h1>
         {data && <span className="text-ink-400 text-sm">{data.total} projet(s)</span>}
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           <div className="border-border-strong bg-surface focus-within:border-accent-500 flex h-7 w-56 items-center gap-1.5 rounded border px-2">
             <Search className="text-ink-400 size-3.5 shrink-0" strokeWidth={2} />
             <input
@@ -57,6 +80,41 @@ export function PortfolioPage() {
               className="text-ink-700 placeholder:text-ink-400 w-full bg-transparent text-base outline-none"
             />
           </div>
+          <Select
+            aria-label="Filtrer les projets par statut"
+            className="w-32"
+            value={status}
+            onChange={(event) => setStatus(event.target.value as ProjectStatus | '')}
+          >
+            <option value="">Tous statuts</option>
+            {Object.values(ProjectStatus).map((value) => (
+              <option key={value} value={value}>
+                {STATUS_LABEL[value]}
+              </option>
+            ))}
+          </Select>
+          <Select
+            aria-label="Trier les projets"
+            className="w-32"
+            value={sortBy}
+            onChange={(event) => setSortBy(event.target.value as typeof sortBy)}
+          >
+            <option value="name">Nom</option>
+            <option value="company">Entreprise</option>
+            <option value="status">Statut</option>
+            <option value="memberCount">Membres</option>
+            <option value="startDate">Début</option>
+            <option value="targetDate">Échéance</option>
+          </Select>
+          <Select
+            aria-label="Sens du tri"
+            className="w-24"
+            value={sortOrder}
+            onChange={(event) => setSortOrder(event.target.value as typeof sortOrder)}
+          >
+            <option value="asc">Croissant</option>
+            <option value="desc">Décroissant</option>
+          </Select>
           {isAdmin && (
             <Button variant="primary" onClick={() => setDialogOpen(true)}>
               <Plus className="size-3.5" strokeWidth={2.5} />
@@ -88,7 +146,7 @@ export function PortfolioPage() {
           />
         )}
 
-        {data && data.items.length > 0 && <ProjectTable projects={data.items} />}
+        {data && data.items.length > 0 && <ProjectTable projects={sortedProjects} />}
       </div>
 
       <CreateProjectDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />

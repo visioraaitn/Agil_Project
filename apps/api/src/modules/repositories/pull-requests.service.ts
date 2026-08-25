@@ -143,7 +143,7 @@ export class PullRequestsService {
 
     const result = await this.getById(projectId, createdId);
 
-    // Notifications en arrière-plan aux Product Owners et Administrateurs du projet
+    // Notifications en arrière-plan aux Project Leads du projet.
     void this.notifyAdminsOnCreation(projectId, result, userId);
 
     return result;
@@ -246,7 +246,12 @@ export class PullRequestsService {
     const updated = await this.getById(projectId, pullRequestId);
 
     // Notifications en arrière-plan à l'auteur de la PR
-    void this.notifyAuthorOnStatusChange(projectId, updated, current.status as PullRequestStatus, userId);
+    void this.notifyAuthorOnStatusChange(
+      projectId,
+      updated,
+      current.status as PullRequestStatus,
+      userId,
+    );
 
     return updated;
   }
@@ -340,9 +345,7 @@ export class PullRequestsService {
         PullRequestStatus.CHANGES_REQUESTED,
         PullRequestStatus.CLOSED,
       ],
-      [PullRequestStatus.REJECTED]: [
-        PullRequestStatus.CLOSED,
-      ],
+      [PullRequestStatus.REJECTED]: [PullRequestStatus.CLOSED],
       [PullRequestStatus.MERGED]: [],
       [PullRequestStatus.CLOSED]: [],
     };
@@ -364,7 +367,7 @@ export class PullRequestsService {
       const admins = await this.prisma.projectMember.findMany({
         where: {
           projectId,
-          role: { in: [ProjectRole.PRODUCT_OWNER, ProjectRole.SCRUM_MASTER] },
+          role: ProjectRole.PROJECT_LEAD,
           userId: { not: actorId },
         },
         select: { userId: true },

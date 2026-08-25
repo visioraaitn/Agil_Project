@@ -18,6 +18,7 @@ import { InlineError } from '@/components/common/StateMessage';
 import { useProjectMembers } from '@/features/projects/hooks';
 import { useSprints } from '@/features/sprints/hooks';
 import { useCreateWorkItem } from '../hooks';
+import { AssigneeSelector } from './AssigneeSelector';
 
 interface CreateWorkItemDialogProps {
   open: boolean;
@@ -45,9 +46,7 @@ export function CreateWorkItemDialog({
   const createItem = useCreateWorkItem(projectRef);
   const { data: members } = useProjectMembers(projectRef);
   const { data: sprints } = useSprints(projectRef);
-  const [form, setForm] = useState(() =>
-    emptyForm(defaultType, defaultParentId, defaultSprintId),
-  );
+  const [form, setForm] = useState(() => emptyForm(defaultType, defaultParentId, defaultSprintId));
   const [submitError, setSubmitError] = useState<unknown>(null);
 
   useEffect(() => {
@@ -68,9 +67,10 @@ export function CreateWorkItemDialog({
       title: form.title.trim(),
       parentId: form.parentId || null,
       description: form.description || null,
+      technicalNotes: form.technicalNotes || null,
       priority: form.priority,
       storyPoints: form.storyPoints === '' ? null : Number(form.storyPoints),
-      assigneeId: form.assigneeId || null,
+      assigneeIds: form.assigneeIds,
       status: defaultStatus,
       sprintId: form.type === WorkItemType.EPIC ? null : form.sprintId || null,
     };
@@ -116,8 +116,7 @@ export function CreateWorkItemDialog({
                   ...form,
                   type: event.target.value as WorkItemType,
                   parentId: '',
-                  sprintId:
-                    event.target.value === WorkItemType.EPIC ? '' : form.sprintId,
+                  sprintId: event.target.value === WorkItemType.EPIC ? '' : form.sprintId,
                 })
               }
             >
@@ -181,19 +180,12 @@ export function CreateWorkItemDialog({
         )}
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Assigné" htmlFor="new-assignee">
-            <Select
-              id="new-assignee"
-              value={form.assigneeId}
-              onChange={(event) => setForm({ ...form, assigneeId: event.target.value })}
-            >
-              <option value="">Non assigné</option>
-              {(members ?? []).map((member) => (
-                <option key={member.user.id} value={member.user.id}>
-                  {member.user.name}
-                </option>
-              ))}
-            </Select>
+          <Field label="Personnes assignées" htmlFor="new-assignees">
+            <AssigneeSelector
+              members={(members ?? []).map((member) => member.user)}
+              selectedIds={form.assigneeIds}
+              onChange={(assigneeIds) => setForm({ ...form, assigneeIds })}
+            />
           </Field>
 
           <Field label="Story points" htmlFor="new-points">
@@ -229,12 +221,25 @@ export function CreateWorkItemDialog({
           )}
         </div>
 
-        <Field label="Description" htmlFor="new-description">
+        <Field
+          label="Description de cadrage — Product Owner / Project Lead"
+          htmlFor="new-description"
+        >
           <Textarea
             id="new-description"
             rows={3}
             value={form.description}
             onChange={(event) => setForm({ ...form, description: event.target.value })}
+          />
+        </Field>
+
+        <Field label="Compte rendu des personnes assignées" htmlFor="new-technical-notes">
+          <Textarea
+            id="new-technical-notes"
+            rows={3}
+            value={form.technicalNotes}
+            onChange={(event) => setForm({ ...form, technicalNotes: event.target.value })}
+            placeholder="Analyse, réalisation, décisions techniques et résultat obtenu…"
           />
         </Field>
 
@@ -249,9 +254,10 @@ interface WorkItemForm {
   title: string;
   parentId: string;
   description: string;
+  technicalNotes: string;
   priority: Priority;
   storyPoints: string;
-  assigneeId: string;
+  assigneeIds: string[];
   sprintId: string;
 }
 
@@ -265,9 +271,10 @@ function emptyForm(
     title: '',
     parentId: parentId ?? '',
     description: '',
+    technicalNotes: '',
     priority: Priority.MEDIUM,
     storyPoints: '',
-    assigneeId: '',
+    assigneeIds: [],
     sprintId: sprintId ?? '',
   };
 }

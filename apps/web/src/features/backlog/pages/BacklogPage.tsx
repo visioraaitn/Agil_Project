@@ -22,7 +22,13 @@ import type { BacklogNode } from '@visiora/shared';
 import { WorkItemStatus } from '@visiora/shared';
 import { Button } from '@/components/ui/button';
 import { Avatar } from '@/components/common/Avatar';
-import { EmptyState, ErrorState, InlineError, LoadingState } from '@/components/common/StateMessage';
+import { AvatarStack } from '@/components/common/AvatarStack';
+import {
+  EmptyState,
+  ErrorState,
+  InlineError,
+  LoadingState,
+} from '@/components/common/StateMessage';
 import { useProjectMembers, useProjectPermissions } from '@/features/projects/hooks';
 import { CreateWorkItemDialog } from '@/features/work-items/components/CreateWorkItemDialog';
 import { FiltersBar } from '@/features/work-items/components/FiltersBar';
@@ -52,7 +58,7 @@ export function BacklogPage() {
   const { can } = useProjectPermissions(projectKey);
   const reorder = useReorderBacklog(projectKey);
 
-  const canReorder = can('backlog:reorder');
+  const canReorder = can('backlog:reorder') && (!filters.sortBy || filters.sortBy === 'rank');
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -85,7 +91,9 @@ export function BacklogPage() {
 
     if (activeRow.node.parentId !== overRow.node.parentId) {
       setDragError(
-        new Error('Un ticket se repriorise parmi ses frères ; changez son parent depuis le ticket.'),
+        new Error(
+          'Un ticket se repriorise parmi ses frères ; changez son parent depuis le ticket.',
+        ),
       );
       return;
     }
@@ -167,7 +175,8 @@ export function BacklogPage() {
               <span className="w-28">Statut</span>
               <span className="w-24">Priorité</span>
               <span className="w-10 text-center">Pts</span>
-              <span className="w-8" />
+              <span className="w-36">Créé par</span>
+              <span className="w-20">Assignés</span>
             </div>
 
             <SortableContext
@@ -320,8 +329,14 @@ function BacklogRow({
       <span className="flex w-10 shrink-0 justify-center">
         <StoryPoints points={node.storyPoints ?? (node.rolledUpPoints || null)} />
       </span>
-      <span className="flex w-8 shrink-0 justify-end">
-        {node.assignee && <Avatar name={node.assignee.name} avatarUrl={node.assignee.avatarUrl} />}
+      <span className="flex w-36 shrink-0 items-center gap-1.5 overflow-hidden">
+        <Avatar name={node.reporter.name} avatarUrl={node.reporter.avatarUrl} />
+        <span className="text-ink-600 truncate text-xs" title={node.reporter.name}>
+          {node.reporter.name}
+        </span>
+      </span>
+      <span className="flex w-20 shrink-0 justify-start">
+        <AvatarStack users={node.assignees} />
       </span>
     </div>
   );

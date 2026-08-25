@@ -8,16 +8,13 @@ const member = (projectRole: ProjectRole | null) => ({
 });
 
 describe('matrice de permissions', () => {
-  it("réserve l'approbation de PR au Product Owner", () => {
-    expect(can(member(ProjectRole.PRODUCT_OWNER), 'pr:approve')).toBe(true);
-    expect(can(member(ProjectRole.SCRUM_MASTER), 'pr:approve')).toBe(false);
-    expect(can(member(ProjectRole.DEVELOPER), 'pr:approve')).toBe(false);
-    expect(can(member(ProjectRole.VIEWER), 'pr:approve')).toBe(false);
+  it("réserve l'approbation de PR au Project Lead", () => {
+    expect(can(member(ProjectRole.PROJECT_LEAD), 'pr:approve')).toBe(true);
+    expect(can(member(ProjectRole.MEMBER), 'pr:approve')).toBe(false);
   });
 
-  it('réserve la déclaration de PR aux développeurs', () => {
-    expect(can(member(ProjectRole.DEVELOPER), 'pr:declare')).toBe(true);
-    expect(can(member(ProjectRole.VIEWER), 'pr:declare')).toBe(false);
+  it('autorise un membre à déclarer une PR', () => {
+    expect(can(member(ProjectRole.MEMBER), 'pr:declare')).toBe(true);
   });
 
   it("n'accorde aucune permission à un non-membre", () => {
@@ -52,10 +49,6 @@ describe('matrice de permissions', () => {
     }
   });
 
-  it('limite le lecteur à la consultation des rapports', () => {
-    expect(permissionsFor(member(ProjectRole.VIEWER))).toEqual(['report:view']);
-  });
-
   it('ne déclare que des permissions existantes', () => {
     for (const permissions of Object.values(ROLE_PERMISSIONS)) {
       for (const permission of permissions) {
@@ -64,9 +57,9 @@ describe('matrice de permissions', () => {
     }
   });
 
-  it('interdit au développeur de supprimer un ticket ou de gérer les membres', () => {
-    expect(can(member(ProjectRole.DEVELOPER), 'workitem:delete')).toBe(false);
-    expect(can(member(ProjectRole.DEVELOPER), 'project:member:manage')).toBe(false);
-    expect(can(member(ProjectRole.DEVELOPER), 'workitem:update')).toBe(true);
+  it('interdit au membre de supprimer un ticket ou de gérer les membres', () => {
+    expect(can(member(ProjectRole.MEMBER), 'workitem:delete')).toBe(false);
+    expect(can(member(ProjectRole.MEMBER), 'project:member:manage')).toBe(false);
+    expect(can(member(ProjectRole.MEMBER), 'workitem:update')).toBe(true);
   });
 });

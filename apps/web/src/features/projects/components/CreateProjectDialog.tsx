@@ -185,8 +185,8 @@ export function CreateProjectDialog({ open, onClose, onCreated }: CreateProjectD
         <InlineError error={submitError} />
 
         <p className="text-ink-400 text-sm">
-          Vous serez ajouté comme Product Owner : sans ce rôle, aucune Pull Request ne pourrait être
-          approuvée sur le projet.
+          Vous serez ajouté comme Project Lead : cette responsabilité d'accès est distincte de votre
+          fonction professionnelle et permet notamment l'approbation des Pull Requests.
         </p>
       </form>
     </Modal>

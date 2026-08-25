@@ -78,7 +78,7 @@ export class UsersController {
   }
 
   /**
-   * Annuaire ouvert à tout utilisateur authentifié : sans lui, un Product Owner
+   * Annuaire ouvert à tout utilisateur authentifié : sans lui, un Project Lead
    * — qui détient `project:member:manage` mais pas `user:manage` — ne pourrait
    * désigner personne à affecter à son projet.
    */

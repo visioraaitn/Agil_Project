@@ -57,7 +57,7 @@ export const PERMISSIONS = [
 
 export type Permission = (typeof PERMISSIONS)[number];
 
-const PRODUCT_OWNER_PERMISSIONS: readonly Permission[] = [
+const PROJECT_LEAD_PERMISSIONS: readonly Permission[] = [
   'repo:manage',
   'branch:create',
   'branch:delete',
@@ -83,29 +83,7 @@ const PRODUCT_OWNER_PERMISSIONS: readonly Permission[] = [
   'report:view',
 ];
 
-const SCRUM_MASTER_PERMISSIONS: readonly Permission[] = [
-  'branch:create',
-  'label:manage',
-  'workitem:create',
-  'workitem:update',
-  'workitem:delete',
-  'workitem:assign',
-  'workitem:move',
-  'backlog:reorder',
-  'attachment:manage',
-  'sprint:manage',
-  'sprint:close',
-  'retro:manage',
-  'pr:declare',
-  'pr:review',
-  'pr:close',
-  'pr:comment',
-  'comment:create',
-  'comment:delete:any',
-  'report:view',
-];
-
-const DEVELOPER_PERMISSIONS: readonly Permission[] = [
+const MEMBER_PERMISSIONS: readonly Permission[] = [
   'branch:create',
   'branch:delete',
   'workitem:create',
@@ -121,13 +99,9 @@ const DEVELOPER_PERMISSIONS: readonly Permission[] = [
   'report:view',
 ];
 
-const VIEWER_PERMISSIONS: readonly Permission[] = ['report:view'];
-
 export const ROLE_PERMISSIONS: Record<ProjectRole, readonly Permission[]> = {
-  [ProjectRole.PRODUCT_OWNER]: PRODUCT_OWNER_PERMISSIONS,
-  [ProjectRole.SCRUM_MASTER]: SCRUM_MASTER_PERMISSIONS,
-  [ProjectRole.DEVELOPER]: DEVELOPER_PERMISSIONS,
-  [ProjectRole.VIEWER]: VIEWER_PERMISSIONS,
+  [ProjectRole.PROJECT_LEAD]: PROJECT_LEAD_PERMISSIONS,
+  [ProjectRole.MEMBER]: MEMBER_PERMISSIONS,
 };
 
 /** Permissions accordées au seul GlobalRole ADMIN, hors de tout projet. */

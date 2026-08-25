@@ -30,10 +30,8 @@ export function isUserFunction(value: unknown): value is UserFunction {
 }
 
 export const ProjectRole = {
-  PRODUCT_OWNER: 'PRODUCT_OWNER',
-  SCRUM_MASTER: 'SCRUM_MASTER',
-  DEVELOPER: 'DEVELOPER',
-  VIEWER: 'VIEWER',
+  PROJECT_LEAD: 'PROJECT_LEAD',
+  MEMBER: 'MEMBER',
 } as const;
 export type ProjectRole = (typeof ProjectRole)[keyof typeof ProjectRole];
 
@@ -161,10 +159,8 @@ export const LABELS_FR = {
     CLIENT: 'Client',
   },
   projectRole: {
-    PRODUCT_OWNER: 'Product Owner',
-    SCRUM_MASTER: 'Scrum Master',
-    DEVELOPER: 'Développeur',
-    VIEWER: 'Lecteur',
+    PROJECT_LEAD: 'Project Lead',
+    MEMBER: 'Membre',
   },
   workItemType: {
     EPIC: 'Epic',

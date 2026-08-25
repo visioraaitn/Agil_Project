@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
 import { Input, Select } from '@/components/ui/input';
 import { Avatar } from '@/components/common/Avatar';
+import { AvatarStack } from '@/components/common/AvatarStack';
 import { MarkdownEditor } from '@/components/common/MarkdownEditor';
 import { MarkdownViewer } from '@/components/common/MarkdownViewer';
 import { ErrorState, InlineError, LoadingState } from '@/components/common/StateMessage';
@@ -27,6 +28,7 @@ import { CommentsPanel } from '@/features/collaboration/components/CommentsPanel
 import { useProjectMembers, useProjectPermissions } from '@/features/projects/hooks';
 import { useSprints } from '@/features/sprints/hooks';
 import { AcceptanceCriteriaEditor } from './AcceptanceCriteriaEditor';
+import { AssigneeSelector } from './AssigneeSelector';
 import { StatusPill, TypeIcon } from './WorkItemChrome';
 import {
   useBacklog,
@@ -135,7 +137,7 @@ function DetailBody({
       priority: draft.priority,
       storyPoints: draft.storyPoints === '' ? null : Number(draft.storyPoints),
       parentId: draft.parentId || null,
-      assigneeId: draft.assigneeId || null,
+      assigneeIds: draft.assigneeIds,
       sprintId: draft.sprintId || null,
       isBlocked: draft.isBlocked,
       blockedReason: draft.isBlocked ? draft.blockedReason || null : null,
@@ -203,6 +205,15 @@ function DetailBody({
       </header>
 
       <div className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-3">
+        <div className="bg-surface-sunken border-border-subtle flex flex-wrap items-center gap-2 rounded border px-2 py-1.5">
+          <span className="text-ink-500 text-xs font-semibold uppercase">Créé par</span>
+          <Avatar name={item.reporter.name} avatarUrl={item.reporter.avatarUrl} />
+          <span className="text-ink-800 text-sm font-medium">{item.reporter.name}</span>
+          <span className="text-ink-400 text-xs">
+            {new Date(item.createdAt).toLocaleString('fr-FR')}
+          </span>
+        </div>
+
         <Field label="Titre" htmlFor="wi-title">
           <Input
             id="wi-title"
@@ -245,26 +256,23 @@ function DetailBody({
             </Select>
           </Field>
 
-          <Field label="Assigné" htmlFor="wi-assignee">
-            <Select
-              id="wi-assignee"
-              value={draft.assigneeId}
+          <Field label="Personnes assignées" htmlFor="wi-assignees">
+            <AssigneeSelector
+              members={(members ?? []).map((member) => member.user)}
+              selectedIds={draft.assigneeIds}
+              onChange={(assigneeIds) => setDraft({ ...draft, assigneeIds })}
               disabled={!canEdit}
-              onChange={(event) => setDraft({ ...draft, assigneeId: event.target.value })}
-            >
-              <option value="">Non assigné</option>
-              {(members ?? []).map((member) => (
-                <option key={member.user.id} value={member.user.id}>
-                  {member.user.name}
-                </option>
-              ))}
-            </Select>
+            />
           </Field>
 
           <Field
             label="Story points"
             htmlFor="wi-points"
-            hint={item.type === WorkItemType.EPIC ? `Total descendants : ${item.rolledUpPoints}` : undefined}
+            hint={
+              item.type === WorkItemType.EPIC
+                ? `Total descendants : ${item.rolledUpPoints}`
+                : undefined
+            }
           >
             <Select
               id="wi-points"
@@ -325,7 +333,7 @@ function DetailBody({
 
         <div>
           <label className="text-ink-700 block mb-1 text-xs font-semibold">
-            Description — contexte métier (Product Owner)
+            Description de cadrage — Product Owner / Project Lead
           </label>
           {canEdit ? (
             <MarkdownEditor
@@ -344,7 +352,7 @@ function DetailBody({
 
         <div>
           <label className="text-ink-700 block mb-1 text-xs font-semibold">
-            Notes techniques d'implémentation (développeur)
+            Compte rendu des personnes assignées
           </label>
           {canEdit ? (
             <MarkdownEditor
@@ -352,7 +360,7 @@ function DetailBody({
               onChange={(value) => setDraft({ ...draft, technicalNotes: value })}
               minHeight="100px"
               onUploadImage={uploadImage}
-              placeholder="Spécifications d'API, requêtes SQL, architecture..."
+              placeholder="Analyse, réalisation, décisions techniques, difficultés et résultat obtenu…"
             />
           ) : (
             <div className="bg-surface-sunken border-border-default rounded border p-3">
@@ -375,13 +383,12 @@ function DetailBody({
                   disabled={!canEdit}
                   onClick={() =>
                     setLabelIds(
-                      selected
-                        ? labelIds.filter((id) => id !== label.id)
-                        : [...labelIds, label.id],
+                      selected ? labelIds.filter((id) => id !== label.id) : [...labelIds, label.id],
                     )
                   }
-                  className={`rounded px-1.5 py-0.5 text-xs font-semibold transition-opacity ${selected ? 'text-white' : 'text-ink-500 bg-surface-sunken opacity-70'
-                    }`}
+                  className={`rounded px-1.5 py-0.5 text-xs font-semibold transition-opacity ${
+                    selected ? 'text-white' : 'text-ink-500 bg-surface-sunken opacity-70'
+                  }`}
                   style={selected ? { backgroundColor: label.color } : undefined}
                 >
                   {label.name}
@@ -434,15 +441,14 @@ function DetailBody({
                   <TypeIcon type={child.type} />
                   <span className="text-ink-400 text-xs">{child.key}</span>
                   <span
-                    className={`flex-1 truncate text-base ${child.status === WorkItemStatus.DONE ? 'text-ink-400 line-through' : ''
-                      }`}
+                    className={`flex-1 truncate text-base ${
+                      child.status === WorkItemStatus.DONE ? 'text-ink-400 line-through' : ''
+                    }`}
                   >
                     {child.title}
                   </span>
                   <StatusPill status={child.status} />
-                  {child.assignee && (
-                    <Avatar name={child.assignee.name} avatarUrl={child.assignee.avatarUrl} />
-                  )}
+                  <AvatarStack users={child.assignees} />
                 </li>
               ))}
             </ul>
@@ -494,7 +500,11 @@ function DetailBody({
       </div>
 
       <footer className="border-border-subtle flex shrink-0 items-center gap-2 border-t px-3 py-2">
-        {saveError ? <InlineError error={saveError} /> : <Badge>{LABELS_FR.workItemType[item.type]}</Badge>}
+        {saveError ? (
+          <InlineError error={saveError} />
+        ) : (
+          <Badge>{LABELS_FR.workItemType[item.type]}</Badge>
+        )}
         <div className="ml-auto flex gap-2">
           <Button onClick={onClose}>Fermer</Button>
           {canEdit && (
@@ -517,7 +527,7 @@ function toDraft(item: WorkItemDetail) {
     priority: item.priority,
     storyPoints: item.storyPoints === null ? '' : String(item.storyPoints),
     parentId: item.parentId ?? '',
-    assigneeId: item.assignee?.id ?? '',
+    assigneeIds: item.assignees.map((assignee) => assignee.id),
     sprintId: item.sprintId ?? '',
     isBlocked: item.isBlocked,
     blockedReason: item.blockedReason ?? '',

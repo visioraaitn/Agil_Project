@@ -121,10 +121,8 @@ export class ProjectsService {
     return toProjectSummary(project, await this.access.getProjectRole(user.id, projectId));
   }
 
-  /**
-   * Le créateur devient Product Owner du projet : sans membre porteur de ce
-   * rôle, aucune PR ne pourrait être approuvée. Il reste retirable ensuite.
-   */
+  /** Le créateur devient Project Lead. La fonction Product Owner reste un
+   * attribut du profil et n'est jamais utilisée pour autoriser une action. */
   async create(input: CreateProjectInput, creatorId: string): Promise<ProjectSummary> {
     const project = await this.prisma.project.create({
       data: {
@@ -137,13 +135,13 @@ export class ProjectsService {
         color: input.color ?? null,
         createdById: creatorId,
         members: {
-          create: { userId: creatorId, role: ProjectRole.PRODUCT_OWNER },
+          create: { userId: creatorId, role: ProjectRole.PROJECT_LEAD },
         },
       },
       select: PROJECT_FIELDS,
     });
 
-    return toProjectSummary(project, ProjectRole.PRODUCT_OWNER);
+    return toProjectSummary(project, ProjectRole.PROJECT_LEAD);
   }
 
   async update(
@@ -286,8 +284,8 @@ export class ProjectsService {
     input: UpdateProjectMemberInput,
   ): Promise<ProjectMemberSummary> {
     await this.assertMemberExists(projectId, userId);
-    if (input.role && input.role !== ProjectRole.PRODUCT_OWNER) {
-      await this.assertNotLastProductOwner(projectId, userId);
+    if (input.role && input.role !== ProjectRole.PROJECT_LEAD) {
+      await this.assertNotLastProjectLead(projectId, userId);
     }
 
     const member = await this.prisma.projectMember.update({
@@ -303,7 +301,7 @@ export class ProjectsService {
 
   async removeMember(projectId: string, userId: string): Promise<void> {
     await this.assertMemberExists(projectId, userId);
-    await this.assertNotLastProductOwner(projectId, userId);
+    await this.assertNotLastProjectLead(projectId, userId);
 
     await this.prisma.projectMember.delete({
       where: { projectId_userId: { projectId, userId } },
@@ -323,24 +321,21 @@ export class ProjectsService {
     }
   }
 
-  /**
-   * Un projet sans Product Owner bloquerait l'approbation des PR (E.1), seule
-   * permission qu'aucun autre rôle ne détient.
-   */
-  private async assertNotLastProductOwner(projectId: string, userId: string): Promise<void> {
+  /** Un projet doit conserver un responsable d'accès Project Lead. */
+  private async assertNotLastProjectLead(projectId: string, userId: string): Promise<void> {
     const member = await this.prisma.projectMember.findUnique({
       where: { projectId_userId: { projectId, userId } },
       select: { role: true },
     });
-    if (member?.role !== ProjectRole.PRODUCT_OWNER) return;
+    if (member?.role !== ProjectRole.PROJECT_LEAD) return;
 
     const remaining = await this.prisma.projectMember.count({
-      where: { projectId, role: ProjectRole.PRODUCT_OWNER, userId: { not: userId } },
+      where: { projectId, role: ProjectRole.PROJECT_LEAD, userId: { not: userId } },
     });
     if (remaining === 0) {
       throw new BadRequestException({
-        code: 'LAST_PRODUCT_OWNER',
-        message: 'Le projet doit conserver au moins un Product Owner',
+        code: 'LAST_PROJECT_LEAD',
+        message: 'Le projet doit conserver au moins un Project Lead',
       });
     }
   }

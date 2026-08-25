@@ -84,24 +84,14 @@ describe('ProjectPermissionGuard', () => {
       denied: Permission;
     }> = [
       {
-        role: ProjectRole.PRODUCT_OWNER,
+        role: ProjectRole.PROJECT_LEAD,
         allowed: 'pr:approve',
         denied: 'user:manage',
       },
       {
-        role: ProjectRole.SCRUM_MASTER,
-        allowed: 'sprint:manage',
-        denied: 'pr:approve',
-      },
-      {
-        role: ProjectRole.DEVELOPER,
+        role: ProjectRole.MEMBER,
         allowed: 'pr:declare',
-        denied: 'workitem:delete',
-      },
-      {
-        role: ProjectRole.VIEWER,
-        allowed: 'report:view',
-        denied: 'workitem:create',
+        denied: 'pr:approve',
       },
     ];
 
@@ -128,11 +118,11 @@ describe('ProjectPermissionGuard', () => {
     });
 
     it('laisse passer un membre en lecture simple', async () => {
-      await expect(run(ProjectRole.VIEWER, undefined)).resolves.toBe(true);
+      await expect(run(ProjectRole.MEMBER, undefined)).resolves.toBe(true);
     });
 
     it('exige une authentification', async () => {
-      const result = await run(ProjectRole.DEVELOPER, 'workitem:update', null);
+      const result = await run(ProjectRole.MEMBER, 'workitem:update', null);
       expect(result).toBeInstanceOf(UnauthorizedException);
     });
   });
@@ -166,7 +156,7 @@ describe('ProjectPermissionGuard', () => {
 
   describe('résolution du projet', () => {
     it('accepte la clé courte et expose l’UUID résolu', async () => {
-      const { guard, prisma } = makeGuard(ProjectRole.DEVELOPER, 'workitem:update');
+      const { guard, prisma } = makeGuard(ProjectRole.MEMBER, 'workitem:update');
       const { context, request } = makeContext(USER, { projectId: 'vis' });
 
       await expect(guard.canActivate(context)).resolves.toBe(true);
@@ -178,7 +168,7 @@ describe('ProjectPermissionGuard', () => {
     });
 
     it("n'interroge pas la table projet quand l'UUID est fourni", async () => {
-      const { guard, prisma } = makeGuard(ProjectRole.DEVELOPER, 'workitem:update');
+      const { guard, prisma } = makeGuard(ProjectRole.MEMBER, 'workitem:update');
       const { context } = makeContext(USER, { projectId: PROJECT_ID });
 
       await guard.canActivate(context);
@@ -186,7 +176,7 @@ describe('ProjectPermissionGuard', () => {
     });
 
     it('résout le rôle sur le projet ciblé, jamais depuis le token', async () => {
-      const { guard, prisma } = makeGuard(ProjectRole.PRODUCT_OWNER, 'pr:approve');
+      const { guard, prisma } = makeGuard(ProjectRole.PROJECT_LEAD, 'pr:approve');
       const { context } = makeContext(USER, { projectId: PROJECT_ID });
 
       await guard.canActivate(context);

@@ -1,8 +1,10 @@
-import { Download, Printer, CheckCircle, Sparkles } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Download, Printer, CheckCircle, Search, Sparkles } from 'lucide-react';
 import type { SprintDetail } from '@visiora/shared';
-import { LABELS_FR, RetroCategory } from '@visiora/shared';
+import { LABELS_FR, RetroCategory, WorkItemStatus } from '@visiora/shared';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/input';
 import { StatusPill, TypeIcon } from '@/features/work-items/components/WorkItemChrome';
 
 interface SprintReportDialogProps {
@@ -18,21 +20,44 @@ export function SprintReportDialog({
   sprint,
   projectName = 'VisioraAI Agile',
 }: SprintReportDialogProps) {
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<WorkItemStatus | ''>('');
+  const [sortBy, setSortBy] = useState<'key' | 'title' | 'status' | 'storyPoints' | 'assignees'>(
+    'key',
+  );
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const totalPoints = sprint.liveCommittedPoints || sprint.committedPoints || 0;
   const donePoints = sprint.liveCompletedPoints || sprint.completedPoints || 0;
   const completionRate = totalPoints > 0 ? Math.round((donePoints / totalPoints) * 100) : 0;
   const completedItems = sprint.items.filter((it) => it.status === 'DONE');
   const remainingItems = sprint.items.filter((it) => it.status !== 'DONE');
+  const visibleItems = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase('fr');
+    const direction = sortOrder === 'asc' ? 1 : -1;
+    return sprint.items
+      .filter(
+        (item) =>
+          (!statusFilter || item.status === statusFilter) &&
+          (!query || `${item.key} ${item.title}`.toLocaleLowerCase('fr').includes(query)),
+      )
+      .sort((left, right) => {
+        const leftValue = ticketSortValue(left, sortBy);
+        const rightValue = ticketSortValue(right, sortBy);
+        return (
+          String(leftValue).localeCompare(String(rightValue), 'fr', { numeric: true }) * direction
+        );
+      });
+  }, [search, sortBy, sortOrder, sprint.items, statusFilter]);
 
   const exportCSV = () => {
     const headers = ['Cle', 'Type', 'Titre', 'Statut', 'Points', 'Assignee'];
-    const rows = sprint.items.map((it) => [
+    const rows = visibleItems.map((it) => [
       it.key,
       it.type,
       `"${it.title.replace(/"/g, '""')}"`,
       it.status,
       it.storyPoints ?? '',
-      `"${it.assignee?.name ?? 'Non assigne'}"`,
+      `"${it.assignees.map((assignee) => assignee.name).join(', ') || 'Non assigne'}"`,
     ]);
 
     const csvContent = [
@@ -49,7 +74,10 @@ export function SprintReportDialog({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `rapport-sprint-${sprint.name.toLowerCase().replace(/\s+/g, '-')}.csv`);
+    link.setAttribute(
+      'download',
+      `rapport-sprint-${sprint.name.toLowerCase().replace(/\s+/g, '-')}.csv`,
+    );
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -67,9 +95,7 @@ export function SprintReportDialog({
       width="md"
       footer={
         <div className="flex items-center justify-between w-full no-print">
-          <span className="text-ink-400 text-xs">
-            Format A4 institutionnel & export tabulaire
-          </span>
+          <span className="text-ink-400 text-xs">Format A4 institutionnel & export tabulaire</span>
           <div className="flex gap-2">
             <Button variant="ghost" onClick={exportCSV} className="gap-1.5 text-xs">
               <Download className="size-3.5" />
@@ -99,7 +125,8 @@ export function SprintReportDialog({
           </div>
 
           <p className="text-ink-500 text-xs mt-1">
-            Période : <strong>{formatDate(sprint.startDate)}</strong> au <strong>{formatDate(sprint.endDate)}</strong>
+            Période : <strong>{formatDate(sprint.startDate)}</strong> au{' '}
+            <strong>{formatDate(sprint.endDate)}</strong>
           </p>
 
           {sprint.goal && (
@@ -113,19 +140,33 @@ export function SprintReportDialog({
         {/* KPIs Synthétiques */}
         <div className="grid grid-cols-4 gap-3">
           <div className="bg-surface-sunken border border-border-default rounded p-2.5 text-center">
-            <span className="text-ink-400 text-[11px] font-semibold uppercase block">Taux de Succès</span>
+            <span className="text-ink-400 text-[11px] font-semibold uppercase block">
+              Taux de Succès
+            </span>
             <span className="text-2xl font-bold text-accent-600">{completionRate}%</span>
           </div>
           <div className="bg-surface-sunken border border-border-default rounded p-2.5 text-center">
-            <span className="text-ink-400 text-[11px] font-semibold uppercase block">Points Livrés</span>
-            <span className="text-2xl font-bold text-emerald-600">{donePoints} <span className="text-xs text-ink-400 font-normal">/ {totalPoints} pts</span></span>
+            <span className="text-ink-400 text-[11px] font-semibold uppercase block">
+              Points Livrés
+            </span>
+            <span className="text-2xl font-bold text-emerald-600">
+              {donePoints}{' '}
+              <span className="text-xs text-ink-400 font-normal">/ {totalPoints} pts</span>
+            </span>
           </div>
           <div className="bg-surface-sunken border border-border-default rounded p-2.5 text-center">
-            <span className="text-ink-400 text-[11px] font-semibold uppercase block">Tickets Terminés</span>
-            <span className="text-2xl font-bold text-ink-900">{completedItems.length} <span className="text-xs text-ink-400 font-normal">/ {sprint.items.length}</span></span>
+            <span className="text-ink-400 text-[11px] font-semibold uppercase block">
+              Tickets Terminés
+            </span>
+            <span className="text-2xl font-bold text-ink-900">
+              {completedItems.length}{' '}
+              <span className="text-xs text-ink-400 font-normal">/ {sprint.items.length}</span>
+            </span>
           </div>
           <div className="bg-surface-sunken border border-border-default rounded p-2.5 text-center">
-            <span className="text-ink-400 text-[11px] font-semibold uppercase block">Restants / Reportés</span>
+            <span className="text-ink-400 text-[11px] font-semibold uppercase block">
+              Restants / Reportés
+            </span>
             <span className="text-2xl font-bold text-amber-600">{remainingItems.length}</span>
           </div>
         </div>
@@ -134,8 +175,58 @@ export function SprintReportDialog({
         <div>
           <h3 className="text-ink-900 text-sm font-bold mb-2 flex items-center gap-1.5">
             <CheckCircle className="size-4 text-emerald-600" />
-            <span>Bilan des Réalisations ({completedItems.length} livrés, {remainingItems.length} restants)</span>
+            <span>
+              Bilan des Réalisations ({completedItems.length} livrés, {remainingItems.length}{' '}
+              restants)
+            </span>
           </h3>
+
+          <div className="no-print mb-2 flex flex-wrap items-center gap-1.5">
+            <div className="border-border-strong bg-surface flex h-7 min-w-48 flex-1 items-center gap-1.5 rounded border px-2">
+              <Search className="text-ink-400 size-3.5" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Filtrer par clé ou titre…"
+                aria-label="Filtrer les tickets du sprint"
+                className="text-ink-700 w-full bg-transparent text-xs outline-none"
+              />
+            </div>
+            <Select
+              aria-label="Filtrer par statut"
+              className="w-32 text-xs"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as WorkItemStatus | '')}
+            >
+              <option value="">Tous statuts</option>
+              {Object.values(WorkItemStatus).map((status) => (
+                <option key={status} value={status}>
+                  {LABELS_FR.workItemStatus[status]}
+                </option>
+              ))}
+            </Select>
+            <Select
+              aria-label="Trier le rapport"
+              className="w-28 text-xs"
+              value={sortBy}
+              onChange={(event) => setSortBy(event.target.value as typeof sortBy)}
+            >
+              <option value="key">Clé</option>
+              <option value="title">Titre</option>
+              <option value="status">Statut</option>
+              <option value="storyPoints">Points</option>
+              <option value="assignees">Assignés</option>
+            </Select>
+            <Select
+              aria-label="Sens du tri"
+              className="w-24 text-xs"
+              value={sortOrder}
+              onChange={(event) => setSortOrder(event.target.value as typeof sortOrder)}
+            >
+              <option value="asc">Croissant</option>
+              <option value="desc">Décroissant</option>
+            </Select>
+          </div>
 
           <div className="border border-border-default rounded overflow-hidden">
             <table className="w-full text-left text-xs border-collapse">
@@ -149,7 +240,7 @@ export function SprintReportDialog({
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-subtle bg-surface">
-                {sprint.items.map((it) => (
+                {visibleItems.map((it) => (
                   <tr key={it.id} className={it.status === 'DONE' ? 'bg-emerald-50/20' : ''}>
                     <td className="p-2 font-mono font-semibold text-ink-400">{it.key}</td>
                     <td className="p-2 font-medium text-ink-900 flex items-center gap-1.5">
@@ -163,7 +254,11 @@ export function SprintReportDialog({
                       {it.storyPoints ?? '-'}
                     </td>
                     <td className="p-2 text-ink-600 truncate">
-                      {it.assignee?.name ?? <span className="text-ink-400 italic">Non assigné</span>}
+                      {it.assignees.length > 0 ? (
+                        it.assignees.map((assignee) => assignee.name).join(', ')
+                      ) : (
+                        <span className="text-ink-400 italic">Non assigné</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -182,7 +277,9 @@ export function SprintReportDialog({
 
             <div className="grid grid-cols-3 gap-2">
               <div className="bg-emerald-50/40 border border-emerald-200 rounded p-2.5">
-                <span className="text-emerald-800 font-bold text-xs block mb-1.5">✅ Ce qui s'est bien passé</span>
+                <span className="text-emerald-800 font-bold text-xs block mb-1.5">
+                  ✅ Ce qui s'est bien passé
+                </span>
                 <ul className="list-disc ml-3.5 space-y-1 text-xs text-ink-700">
                   {sprint.retrospectiveItems
                     .filter((r) => r.category === RetroCategory.WENT_WELL)
@@ -193,7 +290,9 @@ export function SprintReportDialog({
               </div>
 
               <div className="bg-amber-50/40 border border-amber-200 rounded p-2.5">
-                <span className="text-amber-800 font-bold text-xs block mb-1.5">⚠️ Axes d'amélioration</span>
+                <span className="text-amber-800 font-bold text-xs block mb-1.5">
+                  ⚠️ Axes d'amélioration
+                </span>
                 <ul className="list-disc ml-3.5 space-y-1 text-xs text-ink-700">
                   {sprint.retrospectiveItems
                     .filter((r) => r.category === RetroCategory.TO_IMPROVE)
@@ -204,7 +303,9 @@ export function SprintReportDialog({
               </div>
 
               <div className="bg-blue-50/40 border border-blue-200 rounded p-2.5">
-                <span className="text-blue-800 font-bold text-xs block mb-1.5">🎯 Plan d'action</span>
+                <span className="text-blue-800 font-bold text-xs block mb-1.5">
+                  🎯 Plan d'action
+                </span>
                 <ul className="list-disc ml-3.5 space-y-1 text-xs text-ink-700">
                   {sprint.retrospectiveItems
                     .filter((r) => r.category === RetroCategory.ACTION_ITEM)
@@ -229,4 +330,12 @@ function formatDate(value: Date | string) {
     month: 'short',
     year: 'numeric',
   }).format(new Date(value));
+}
+
+function ticketSortValue(
+  item: SprintDetail['items'][number],
+  field: 'key' | 'title' | 'status' | 'storyPoints' | 'assignees',
+): string | number {
+  if (field === 'assignees') return item.assignees.map((assignee) => assignee.name).join(', ');
+  return item[field] ?? '';
 }

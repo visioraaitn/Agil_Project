@@ -15,10 +15,15 @@ interface AddMemberDialogProps {
   currentMembers: ProjectMemberSummary[];
 }
 
-export function AddMemberDialog({ open, onClose, projectRef, currentMembers }: AddMemberDialogProps) {
+export function AddMemberDialog({
+  open,
+  onClose,
+  projectRef,
+  currentMembers,
+}: AddMemberDialogProps) {
   const addMember = useAddMember(projectRef);
   const [userId, setUserId] = useState('');
-  const [role, setRole] = useState<ProjectRole>(ProjectRole.DEVELOPER);
+  const [role, setRole] = useState<ProjectRole>(ProjectRole.MEMBER);
   const [submitError, setSubmitError] = useState<unknown>(null);
 
   // Annuaire, et non la liste d'administration : un PO n'a pas `user:manage`.
@@ -31,7 +36,7 @@ export function AddMemberDialog({ open, onClose, projectRef, currentMembers }: A
 
   const close = () => {
     setUserId('');
-    setRole(ProjectRole.DEVELOPER);
+    setRole(ProjectRole.MEMBER);
     setSubmitError(null);
     onClose();
   };

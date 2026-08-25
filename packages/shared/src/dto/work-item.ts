@@ -34,6 +34,8 @@ export const createWorkItemSchema = z
     technicalNotes: z.string().max(20000).nullable().optional(),
     priority: z.nativeEnum(Priority).default(Priority.MEDIUM),
     storyPoints: z.number().int().min(0).max(100).nullable().optional(),
+    /** Liste canonique. `assigneeId` reste accepté pour les anciens clients. */
+    assigneeIds: z.array(uuidSchema).max(20).optional(),
     assigneeId: uuidSchema.nullable().optional(),
     sprintId: uuidSchema.nullable().optional(),
     labelIds: z.array(uuidSchema).max(20).optional(),
@@ -63,6 +65,8 @@ export const updateWorkItemSchema = z
     storyPoints: z.number().int().min(0).max(100).nullable().optional(),
     /** Permet de rattacher ou detacher une story/bug apres sa creation. */
     parentId: uuidSchema.nullable().optional(),
+    /** Liste canonique. Une liste vide retire toutes les affectations. */
+    assigneeIds: z.array(uuidSchema).max(20).optional(),
     assigneeId: uuidSchema.nullable().optional(),
     sprintId: uuidSchema.nullable().optional(),
     labelIds: z.array(uuidSchema).max(20).optional(),
@@ -98,10 +102,26 @@ const booleanFlag = z
   .transform((value) => value === 'true')
   .optional();
 
+export const WorkItemSortBy = {
+  RANK: 'rank',
+  KEY: 'key',
+  TITLE: 'title',
+  STATUS: 'status',
+  PRIORITY: 'priority',
+  CREATED_AT: 'createdAt',
+  UPDATED_AT: 'updatedAt',
+  DUE_DATE: 'dueDate',
+} as const;
+export type WorkItemSortBy = (typeof WorkItemSortBy)[keyof typeof WorkItemSortBy];
+
+export const SortOrder = { ASC: 'asc', DESC: 'desc' } as const;
+export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder];
+
 /** F.4 · Filtres avancés, partagés par le backlog et le board. */
 export const workItemFiltersSchema = z.object({
   search: z.string().trim().max(160).optional(),
   assigneeId: uuidSchema.optional(),
+  creatorId: uuidSchema.optional(),
   sprintId: uuidSchema.optional(),
   labelId: uuidSchema.optional(),
   priority: z.nativeEnum(Priority).optional(),
@@ -110,6 +130,8 @@ export const workItemFiltersSchema = z.object({
   isBlocked: booleanFlag,
   /** Backlog : masquer les éléments terminés. */
   hideDone: booleanFlag,
+  sortBy: z.nativeEnum(WorkItemSortBy).optional(),
+  sortOrder: z.nativeEnum(SortOrder).optional(),
 });
 export type WorkItemFilters = z.infer<typeof workItemFiltersSchema>;
 
@@ -146,7 +168,10 @@ export interface WorkItemSummary {
   sprintId: string | null;
   startDate: string | null;
   dueDate: string | null;
+  /** Premier assigné conservé pour compatibilité avec les anciens écrans. */
   assignee: UserDirectoryEntry | null;
+  assignees: UserDirectoryEntry[];
+  reporter: UserDirectoryEntry;
   labels: LabelSummary[];
   childCount: number;
   doneChildCount: number;
@@ -159,7 +184,6 @@ export interface WorkItemSummary {
 export interface WorkItemDetail extends WorkItemSummary {
   description: string | null;
   technicalNotes: string | null;
-  reporter: UserDirectoryEntry | null;
   acceptanceCriteria: AcceptanceCriterionSummary[];
   children: WorkItemSummary[];
   parent: { id: string; key: string; title: string; type: WorkItemType } | null;

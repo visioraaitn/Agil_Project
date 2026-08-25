@@ -17,6 +17,7 @@ function toQuery(filters: WorkItemFilters): Record<string, string | undefined> {
   return {
     search: filters.search,
     assigneeId: filters.assigneeId,
+    creatorId: filters.creatorId,
     sprintId: filters.sprintId,
     labelId: filters.labelId,
     priority: filters.priority,
@@ -24,6 +25,8 @@ function toQuery(filters: WorkItemFilters): Record<string, string | undefined> {
     status: filters.status,
     isBlocked: filters.isBlocked === undefined ? undefined : String(filters.isBlocked),
     hideDone: filters.hideDone === undefined ? undefined : String(filters.hideDone),
+    sortBy: filters.sortBy,
+    sortOrder: filters.sortOrder,
   };
 }
 

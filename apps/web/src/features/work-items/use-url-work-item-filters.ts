@@ -1,10 +1,18 @@
 import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Priority, WorkItemStatus, WorkItemType, type WorkItemFilters } from '@visiora/shared';
+import {
+  Priority,
+  SortOrder,
+  WorkItemSortBy,
+  WorkItemStatus,
+  WorkItemType,
+  type WorkItemFilters,
+} from '@visiora/shared';
 
 const FILTER_KEYS = [
   'search',
   'assigneeId',
+  'creatorId',
   'sprintId',
   'labelId',
   'priority',
@@ -12,6 +20,8 @@ const FILTER_KEYS = [
   'status',
   'isBlocked',
   'hideDone',
+  'sortBy',
+  'sortOrder',
 ] as const;
 
 type FilterKey = (typeof FILTER_KEYS)[number];
@@ -19,6 +29,8 @@ type FilterKey = (typeof FILTER_KEYS)[number];
 const priorities = new Set<string>(Object.values(Priority));
 const types = new Set<string>(Object.values(WorkItemType));
 const statuses = new Set<string>(Object.values(WorkItemStatus));
+const sortFields = new Set<string>(Object.values(WorkItemSortBy));
+const sortOrders = new Set<string>(Object.values(SortOrder));
 const DEFAULT_FILTERS: WorkItemFilters = {};
 
 /** Phase 7: conserve les filtres dans l'URL pour partager/reprendre une vue. */
@@ -60,6 +72,7 @@ function readFilters(params: URLSearchParams): WorkItemFilters {
   return compact({
     search: readString(params, 'search'),
     assigneeId: readString(params, 'assigneeId'),
+    creatorId: readString(params, 'creatorId'),
     sprintId: readString(params, 'sprintId'),
     labelId: readString(params, 'labelId'),
     priority: readEnum(params, 'priority', priorities) as Priority | undefined,
@@ -67,6 +80,8 @@ function readFilters(params: URLSearchParams): WorkItemFilters {
     status: readEnum(params, 'status', statuses) as WorkItemStatus | undefined,
     isBlocked: readBoolean(params, 'isBlocked'),
     hideDone: readBoolean(params, 'hideDone'),
+    sortBy: readEnum(params, 'sortBy', sortFields) as WorkItemFilters['sortBy'],
+    sortOrder: readEnum(params, 'sortOrder', sortOrders) as WorkItemFilters['sortOrder'],
   });
 }
 
@@ -75,7 +90,11 @@ function readString(params: URLSearchParams, key: FilterKey): string | undefined
   return value || undefined;
 }
 
-function readEnum(params: URLSearchParams, key: FilterKey, allowed: Set<string>): string | undefined {
+function readEnum(
+  params: URLSearchParams,
+  key: FilterKey,
+  allowed: Set<string>,
+): string | undefined {
   const value = params.get(key);
   return value && allowed.has(value) ? value : undefined;
 }

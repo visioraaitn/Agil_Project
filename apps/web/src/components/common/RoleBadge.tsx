@@ -2,10 +2,8 @@ import { LABELS_FR, ProjectRole } from '@visiora/shared';
 import { Badge } from '@/components/ui/badge';
 
 const TONES = {
-  [ProjectRole.PRODUCT_OWNER]: 'accent',
-  [ProjectRole.SCRUM_MASTER]: 'success',
-  [ProjectRole.DEVELOPER]: 'neutral',
-  [ProjectRole.VIEWER]: 'neutral',
+  [ProjectRole.PROJECT_LEAD]: 'accent',
+  [ProjectRole.MEMBER]: 'neutral',
 } as const;
 
 export function RoleBadge({ role }: { role: ProjectRole }) {

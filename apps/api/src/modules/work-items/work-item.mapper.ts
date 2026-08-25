@@ -41,6 +41,13 @@ export const WORK_ITEM_SUMMARY_SELECT = {
   createdAt: true,
   updatedAt: true,
   assignee: { select: { id: true, name: true, email: true, avatarUrl: true } },
+  assignees: {
+    select: {
+      user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+    },
+    orderBy: { assignedAt: 'asc' },
+  },
+  reporter: { select: { id: true, name: true, email: true, avatarUrl: true } },
   labels: { select: { label: { select: { id: true, name: true, color: true } } } },
   project: { select: { key: true } },
 } satisfies Prisma.WorkItemSelect;
@@ -53,7 +60,6 @@ export const WORK_ITEM_DETAIL_SELECT = {
   ...WORK_ITEM_SUMMARY_SELECT,
   description: true,
   technicalNotes: true,
-  reporter: { select: { id: true, name: true, email: true, avatarUrl: true } },
   parent: {
     select: {
       id: true,
@@ -137,7 +143,14 @@ export function toWorkItemSummary(
     sprintId: row.sprintId,
     startDate: row.startDate?.toISOString() ?? null,
     dueDate: row.dueDate?.toISOString() ?? null,
-    assignee: row.assignee,
+    assignee: row.assignees[0]?.user ?? row.assignee,
+    assignees:
+      row.assignees.length > 0
+        ? row.assignees.map((assignment) => assignment.user)
+        : row.assignee
+          ? [row.assignee]
+          : [],
+    reporter: row.reporter,
     labels: toLabels(row),
     childCount: aggregate.childCount,
     doneChildCount: aggregate.doneChildCount,

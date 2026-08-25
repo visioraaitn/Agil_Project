@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   PullRequestStatus,
   type BranchSummary,
@@ -145,8 +150,7 @@ export class RepositoriesService {
       select: { role: true },
     });
 
-    const isPoOrAdmin =
-      globalRole === 'ADMIN' || member?.role === 'PRODUCT_OWNER';
+    const isLeadOrAdmin = globalRole === 'ADMIN' || member?.role === 'PROJECT_LEAD';
 
     const branch = await this.prisma.branch.findFirst({
       where: { id: branchId, repositoryId },
@@ -174,16 +178,16 @@ export class RepositoriesService {
       });
     }
 
-    // Règle 2 : Une branche protégée ne peut être supprimée que par un PO ou Admin
-    if (branch.isProtected && !isPoOrAdmin) {
+    // Règle 2 : une branche protégée exige un Project Lead ou un Admin.
+    if (branch.isProtected && !isLeadOrAdmin) {
       throw new ForbiddenException({
         code: 'CANNOT_DELETE_PROTECTED_BRANCH',
-        message: 'Seul un administrateur ou Product Owner peut supprimer une branche protégée',
+        message: 'Seul un administrateur ou Project Lead peut supprimer une branche protégée',
       });
     }
 
-    // Règle 3 : Un développeur ne peut supprimer que ses propres branches si non PO/Admin
-    if (!isPoOrAdmin && branch.createdById && branch.createdById !== userId) {
+    // Règle 3 : un membre ne peut supprimer que ses propres branches.
+    if (!isLeadOrAdmin && branch.createdById && branch.createdById !== userId) {
       throw new ForbiddenException({
         code: 'FORBIDDEN_BRANCH_DELETION',
         message: 'Vous ne pouvez supprimer que vos propres branches',

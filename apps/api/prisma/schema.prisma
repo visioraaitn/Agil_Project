@@ -22,12 +22,11 @@ enum GlobalRole {
   MEMBER // utilisateur standard, ses droits viennent de ses rôles projet
 }
 
-/// A.2 · Rôle porté PAR PROJET (un même user peut être PO ici et DEV ailleurs)
+/// A.2 · Rôle d'accès porté PAR PROJET. La fonction professionnelle (PO,
+/// développeur, etc.) reste dans User.jobTitle et n'accorde aucun droit.
 enum ProjectRole {
-  PRODUCT_OWNER
-  SCRUM_MASTER
-  DEVELOPER
-  VIEWER
+  PROJECT_LEAD
+  MEMBER
 }
 
 model User {
@@ -49,6 +48,7 @@ model User {
   memberships              ProjectMember[]
   createdProjects          Project[]                @relation("ProjectCreator")
   assignedItems            WorkItem[]               @relation("WorkItemAssignee")
+  workItemAssignments      WorkItemAssignee[]
   reportedItems            WorkItem[]               @relation("WorkItemReporter")
   comments                 Comment[]
   attachments              Attachment[]
@@ -135,7 +135,7 @@ model ProjectMember {
   id        String      @id @default(uuid())
   projectId String
   userId    String
-  role      ProjectRole @default(DEVELOPER)
+  role      ProjectRole @default(MEMBER)
   /// Capacité indicative en points par sprint (planification)
   capacity  Int?
   joinedAt  DateTime    @default(now())
@@ -397,6 +397,7 @@ model WorkItem {
   children           WorkItem[]            @relation("WorkItemHierarchy")
   sprint             Sprint?               @relation(fields: [sprintId], references: [id], onDelete: SetNull)
   assignee           User?                 @relation("WorkItemAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  assignees          WorkItemAssignee[]
   reporter           User                  @relation("WorkItemReporter", fields: [reporterId], references: [id])
   labels             WorkItemLabel[]
   acceptanceCriteria AcceptanceCriterion[]
@@ -412,6 +413,21 @@ model WorkItem {
   @@index([assigneeId])
   @@index([parentId])
   @@index([deletedAt])
+}
+
+/// Plusieurs membres peuvent réaliser le même ticket. `WorkItem.assigneeId`
+/// reste temporairement le premier assigné pour compatibilité API/rollback ;
+/// cette table est la source de vérité pour les nouvelles écritures.
+model WorkItemAssignee {
+  workItemId String
+  userId     String
+  assignedAt DateTime @default(now())
+
+  workItem WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([workItemId, userId])
+  @@index([userId])
 }
 
 /// D.2 · Critères d'acceptation (Definition of Done)

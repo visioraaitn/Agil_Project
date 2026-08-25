@@ -11,6 +11,7 @@ import {
   WorkItemFilters,
   WorkItemStatus,
   WorkItemSummary,
+  WorkItemSortBy,
   WorkItemType,
   canBeChildOf,
   REQUIRES_PARENT,
@@ -45,7 +46,7 @@ export class WorkItemsService {
     const rows = await this.prisma.workItem.findMany({
       where: this.buildWhere(projectId, filters),
       select: WORK_ITEM_SUMMARY_SELECT,
-      orderBy: { rank: 'asc' },
+      orderBy: this.buildOrderBy(filters, 'backlog'),
     });
 
     const aggregates = this.computeAggregates(rows);
@@ -78,7 +79,7 @@ export class WorkItemsService {
         type: filters.type ?? { in: [WorkItemType.STORY, WorkItemType.BUG, WorkItemType.SUBTASK] },
       },
       select: WORK_ITEM_SUMMARY_SELECT,
-      orderBy: { boardRank: 'asc' },
+      orderBy: this.buildOrderBy(filters, 'board'),
     });
 
     const aggregates = this.computeAggregates(rows);
@@ -130,7 +131,8 @@ export class WorkItemsService {
     reporterId: string,
   ): Promise<WorkItemDetail> {
     await this.assertHierarchy(projectId, input.type, input.parentId ?? null);
-    await this.assertReferences(projectId, input.assigneeId, input.sprintId, input.labelIds);
+    const assigneeIds = resolveAssigneeIds(input) ?? [];
+    await this.assertReferences(projectId, assigneeIds, input.sprintId, input.labelIds);
 
     const targetStatus = input.status ?? WorkItemStatus.TODO;
 
@@ -160,7 +162,7 @@ export class WorkItemsService {
           priority: input.priority,
           storyPoints: input.storyPoints ?? null,
           parentId: input.parentId ?? null,
-          assigneeId: input.assigneeId ?? null,
+          assigneeId: assigneeIds[0] ?? null,
           sprintId: input.sprintId ?? null,
           startDate: input.startDate ?? null,
           dueDate: input.dueDate ?? null,
@@ -170,6 +172,9 @@ export class WorkItemsService {
           ...(targetStatus === WorkItemStatus.DONE ? { closedAt: new Date() } : {}),
           ...(input.labelIds?.length
             ? { labels: { create: input.labelIds.map((labelId) => ({ labelId })) } }
+            : {}),
+          ...(assigneeIds.length
+            ? { assignees: { create: assigneeIds.map((userId) => ({ userId })) } }
             : {}),
         },
         select: { id: true },
@@ -197,9 +202,11 @@ export class WorkItemsService {
       await this.assertNoCycle(itemId, targetParentId);
     }
 
-    await this.assertReferences(projectId, input.assigneeId, input.sprintId, input.labelIds);
+    const assigneeIds = resolveAssigneeIds(input);
+    await this.assertReferences(projectId, assigneeIds, input.sprintId, input.labelIds);
 
-    const closesNow = input.status === WorkItemStatus.DONE && existing.status !== WorkItemStatus.DONE;
+    const closesNow =
+      input.status === WorkItemStatus.DONE && existing.status !== WorkItemStatus.DONE;
     const reopens = input.status !== undefined && input.status !== WorkItemStatus.DONE;
     const targetRank = changesParent
       ? await this.ranking.computeRank('rank', {}, { projectId, parentId: targetParentId })
@@ -225,13 +232,13 @@ export class WorkItemsService {
             'status',
             'priority',
             'storyPoints',
-            'assigneeId',
             'sprintId',
             'startDate',
             'dueDate',
             'isBlocked',
             'blockedReason',
           ]),
+          ...(assigneeIds !== undefined ? { assigneeId: assigneeIds[0] ?? null } : {}),
           ...(changesParent
             ? {
                 number,
@@ -250,6 +257,17 @@ export class WorkItemsService {
         if (input.labelIds.length > 0) {
           await tx.workItemLabel.createMany({
             data: input.labelIds.map((labelId) => ({ workItemId: itemId, labelId })),
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      // La liste envoyée remplace toutes les affectations du ticket.
+      if (assigneeIds !== undefined) {
+        await tx.workItemAssignee.deleteMany({ where: { workItemId: itemId } });
+        if (assigneeIds.length > 0) {
+          await tx.workItemAssignee.createMany({
+            data: assigneeIds.map((userId) => ({ workItemId: itemId, userId })),
             skipDuplicates: true,
           });
         }
@@ -282,7 +300,11 @@ export class WorkItemsService {
    * du backlog passent par le même point d'entrée : dans les deux cas il s'agit
    * de repositionner un ticket parmi ses voisins.
    */
-  async move(projectId: string, itemId: string, input: MoveWorkItemInput): Promise<WorkItemSummary> {
+  async move(
+    projectId: string,
+    itemId: string,
+    input: MoveWorkItemInput,
+  ): Promise<WorkItemSummary> {
     const item = await this.prisma.workItem.findFirst({
       where: { id: itemId, projectId, deletedAt: null },
       select: { id: true, type: true, status: true, parentId: true },
@@ -326,7 +348,11 @@ export class WorkItemsService {
       data.parent = targetParentId ? { connect: { id: targetParentId } } : { disconnect: true };
       // Nouveau voisinage : si aucune position n'a été calculée, on place en fin.
       if (data.rank === undefined && !input.status) {
-        data.rank = await this.ranking.computeRank('rank', {}, { projectId, parentId: targetParentId });
+        data.rank = await this.ranking.computeRank(
+          'rank',
+          {},
+          { projectId, parentId: targetParentId },
+        );
       }
     }
 
@@ -373,26 +399,52 @@ export class WorkItemsService {
   // --- Règles et utilitaires ---------------------------------------------
 
   private buildWhere(projectId: string, filters: WorkItemFilters): Prisma.WorkItemWhereInput {
+    const compoundFilters: Prisma.WorkItemWhereInput[] = [];
+    if (filters.assigneeId) {
+      compoundFilters.push({
+        OR: [
+          { assignees: { some: { userId: filters.assigneeId } } },
+          { assigneeId: filters.assigneeId },
+        ],
+      });
+    }
+    if (filters.search) {
+      compoundFilters.push({
+        OR: [
+          { title: { contains: filters.search, mode: 'insensitive' } },
+          { description: { contains: filters.search, mode: 'insensitive' } },
+          { technicalNotes: { contains: filters.search, mode: 'insensitive' } },
+        ],
+      });
+    }
+
     return {
       projectId,
       deletedAt: null,
       ...(filters.type ? { type: filters.type } : {}),
       ...(filters.status ? { status: filters.status } : {}),
       ...(filters.priority ? { priority: filters.priority } : {}),
-      ...(filters.assigneeId ? { assigneeId: filters.assigneeId } : {}),
+      ...(filters.creatorId ? { reporterId: filters.creatorId } : {}),
       ...(filters.sprintId ? { sprintId: filters.sprintId } : {}),
       ...(filters.isBlocked !== undefined ? { isBlocked: filters.isBlocked } : {}),
       ...(filters.hideDone ? { status: { not: WorkItemStatus.DONE } } : {}),
       ...(filters.labelId ? { labels: { some: { labelId: filters.labelId } } } : {}),
-      ...(filters.search
-        ? {
-            OR: [
-              { title: { contains: filters.search, mode: 'insensitive' } },
-              { description: { contains: filters.search, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
+      ...(compoundFilters.length ? { AND: compoundFilters } : {}),
     };
+  }
+
+  private buildOrderBy(
+    filters: WorkItemFilters,
+    view: 'backlog' | 'board',
+  ): Prisma.WorkItemOrderByWithRelationInput[] {
+    const direction = filters.sortOrder ?? 'asc';
+    const field = filters.sortBy;
+    const stableColumn = view === 'backlog' ? 'rank' : 'boardRank';
+
+    if (!field) return [{ [stableColumn]: 'asc' }];
+
+    const column = field === WorkItemSortBy.KEY ? 'number' : field;
+    return [{ [column]: direction }, { [stableColumn]: 'asc' }];
   }
 
   /** Retourne le premier entier positif libre dans une portee de numerotation. */
@@ -523,20 +575,19 @@ export class WorkItemsService {
 
   private async assertReferences(
     projectId: string,
-    assigneeId?: string | null,
+    assigneeIds?: string[],
     sprintId?: string | null,
     labelIds?: string[],
   ): Promise<void> {
-    if (assigneeId) {
-      // L'assigné doit être membre du projet : on n'assigne pas un inconnu.
-      const membership = await this.prisma.projectMember.findUnique({
-        where: { projectId_userId: { projectId, userId: assigneeId } },
-        select: { id: true },
+    if (assigneeIds?.length) {
+      const uniqueIds = [...new Set(assigneeIds)];
+      const membershipCount = await this.prisma.projectMember.count({
+        where: { projectId, userId: { in: uniqueIds } },
       });
-      if (!membership) {
+      if (membershipCount !== uniqueIds.length) {
         throw new BadRequestException({
           code: 'ASSIGNEE_NOT_MEMBER',
-          message: "L'assigné doit être membre du projet",
+          message: 'Chaque personne assignée doit être membre du projet',
         });
       }
     }
@@ -568,7 +619,10 @@ export class WorkItemsService {
   }
 
   private notFound(): NotFoundException {
-    return new NotFoundException({ code: 'WORK_ITEM_NOT_FOUND', message: "Ce ticket n'existe pas" });
+    return new NotFoundException({
+      code: 'WORK_ITEM_NOT_FOUND',
+      message: "Ce ticket n'existe pas",
+    });
   }
 }
 
@@ -587,6 +641,17 @@ function pick<T extends object, K extends keyof T>(
     if (source[key] !== undefined) result[key] = source[key];
   }
   return result;
+}
+
+/** Convertit les nouveaux `assigneeIds` et l'ancien `assigneeId` en une liste
+ * unique. `undefined` signifie qu'une mise à jour ne touche pas aux assignés. */
+function resolveAssigneeIds(input: {
+  assigneeIds?: string[];
+  assigneeId?: string | null;
+}): string[] | undefined {
+  if (input.assigneeIds !== undefined) return [...new Set(input.assigneeIds)];
+  if (input.assigneeId !== undefined) return input.assigneeId ? [input.assigneeId] : [];
+  return undefined;
 }
 
 /** Premier entier strictement positif absent d'une liste, sans supposer sa continuite. */

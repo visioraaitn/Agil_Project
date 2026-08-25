@@ -211,23 +211,23 @@ async function main(): Promise<void> {
   // =========================================================================
   const members = [
     // Projet VIS
-    { project: pVis, user: users['po@visiora.ai'], role: ProjectRole.PRODUCT_OWNER, capacity: 5 },
-    { project: pVis, user: users['sm@visiora.ai'], role: ProjectRole.SCRUM_MASTER, capacity: 8 },
-    { project: pVis, user: users['dev1@visiora.ai'], role: ProjectRole.DEVELOPER, capacity: 21 },
-    { project: pVis, user: users['dev2@visiora.ai'], role: ProjectRole.DEVELOPER, capacity: 21 },
-    { project: pVis, user: users['viewer@visiora.ai'], role: ProjectRole.VIEWER, capacity: null },
+    { project: pVis, user: users['po@visiora.ai'], role: ProjectRole.PROJECT_LEAD, capacity: 5 },
+    { project: pVis, user: users['sm@visiora.ai'], role: ProjectRole.MEMBER, capacity: 8 },
+    { project: pVis, user: users['dev1@visiora.ai'], role: ProjectRole.MEMBER, capacity: 21 },
+    { project: pVis, user: users['dev2@visiora.ai'], role: ProjectRole.MEMBER, capacity: 21 },
+    { project: pVis, user: users['viewer@visiora.ai'], role: ProjectRole.MEMBER, capacity: null },
     // Projet ECOM
     {
       project: pEcom,
       user: users['admin@visiora.ai'],
-      role: ProjectRole.PRODUCT_OWNER,
+      role: ProjectRole.PROJECT_LEAD,
       capacity: 10,
     },
-    { project: pEcom, user: users['sm@visiora.ai'], role: ProjectRole.SCRUM_MASTER, capacity: 8 },
-    { project: pEcom, user: users['dev1@visiora.ai'], role: ProjectRole.DEVELOPER, capacity: 13 },
+    { project: pEcom, user: users['sm@visiora.ai'], role: ProjectRole.MEMBER, capacity: 8 },
+    { project: pEcom, user: users['dev1@visiora.ai'], role: ProjectRole.MEMBER, capacity: 13 },
     // Projet AI
-    { project: pAI, user: users['po@visiora.ai'], role: ProjectRole.PRODUCT_OWNER, capacity: 5 },
-    { project: pAI, user: users['dev2@visiora.ai'], role: ProjectRole.DEVELOPER, capacity: 21 },
+    { project: pAI, user: users['po@visiora.ai'], role: ProjectRole.PROJECT_LEAD, capacity: 5 },
+    { project: pAI, user: users['dev2@visiora.ai'], role: ProjectRole.MEMBER, capacity: 21 },
   ];
 
   for (const m of members) {
@@ -477,7 +477,7 @@ async function main(): Promise<void> {
       type: WorkItemType.EPIC,
       title: 'Gestion des Accès, Authentification & Sécurité RBAC',
       description:
-        'Gestion complète des identités, rôles par projet (PO, SM, DEV, VIEWER) et rotation des tokens JWT.',
+        'Gestion complète des identités, fonctions professionnelles, rôles projet (Project Lead / Member) et rotation des tokens JWT.',
       status: WorkItemStatus.DONE,
       priority: Priority.CRITICAL,
       startDate: new Date('2026-08-01'),
@@ -1073,6 +1073,18 @@ Mise en place des règles de sécurité RBAC pour empêcher les approbations non
         isRead: true,
       },
     ],
+  });
+
+  // Alimente la relation multi-assignés à partir des tickets de démonstration.
+  const legacyAssignments = await prisma.workItem.findMany({
+    where: { assigneeId: { not: null } },
+    select: { id: true, assigneeId: true },
+  });
+  await prisma.workItemAssignee.createMany({
+    data: legacyAssignments.flatMap((item) =>
+      item.assigneeId ? [{ workItemId: item.id, userId: item.assigneeId }] : [],
+    ),
+    skipDuplicates: true,
   });
 
   // Mettre à jour le compteur global du projet

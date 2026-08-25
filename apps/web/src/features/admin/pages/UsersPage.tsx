@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { KeyRound, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { GlobalRole, LABELS_FR, type UserSummary } from '@visiora/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/input';
 import { Avatar } from '@/components/common/Avatar';
 import {
   EmptyState,
@@ -28,6 +29,12 @@ function formatDate(iso: string | null): string {
 export function UsersPage() {
   const { user: currentUser, canManageAdmins } = useAuth();
   const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState<GlobalRole | ''>('');
+  const [activeFilter, setActiveFilter] = useState<'true' | 'false' | ''>('');
+  const [sortBy, setSortBy] = useState<
+    'name' | 'jobTitle' | 'globalRole' | 'isActive' | 'lastLoginAt'
+  >('name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [editing, setEditing] = useState<UserSummary | null>(null);
   const [resetting, setResetting] = useState<UserSummary | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -36,9 +43,23 @@ export function UsersPage() {
 
   const { data, isLoading, error } = useUsers({
     search: search.trim() || undefined,
+    globalRole: roleFilter || undefined,
+    isActive: activeFilter ? activeFilter === 'true' : undefined,
     pageSize: 100,
   });
   const deleteUser = useDeleteUser();
+
+  const sortedUsers = useMemo(() => {
+    const items = [...(data?.items ?? [])];
+    const direction = sortOrder === 'asc' ? 1 : -1;
+    return items.sort((left, right) => {
+      const leftValue = left[sortBy] ?? '';
+      const rightValue = right[sortBy] ?? '';
+      return (
+        String(leftValue).localeCompare(String(rightValue), 'fr', { numeric: true }) * direction
+      );
+    });
+  }, [data?.items, sortBy, sortOrder]);
 
   const openCreate = () => {
     setEditing(null);
@@ -69,11 +90,11 @@ export function UsersPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="border-border-subtle flex shrink-0 items-center gap-3 border-b px-4 py-2">
+      <header className="border-border-subtle flex shrink-0 flex-wrap items-center gap-3 border-b px-4 py-2">
         <h1 className="text-ink-900 text-xl font-semibold">Utilisateurs</h1>
         {data && <span className="text-ink-400 text-sm">{data.total} compte(s)</span>}
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           <div className="border-border-strong bg-surface focus-within:border-accent-500 flex h-7 w-56 items-center gap-1.5 rounded border px-2">
             <Search className="text-ink-400 size-3.5 shrink-0" strokeWidth={2} />
             <input
@@ -84,6 +105,47 @@ export function UsersPage() {
               className="text-ink-700 placeholder:text-ink-400 w-full bg-transparent text-base outline-none"
             />
           </div>
+          <Select
+            aria-label="Filtrer par rôle plateforme"
+            className="w-36"
+            value={roleFilter}
+            onChange={(event) => setRoleFilter(event.target.value as GlobalRole | '')}
+          >
+            <option value="">Tous les rôles</option>
+            <option value={GlobalRole.ADMIN}>Administrateurs</option>
+            <option value={GlobalRole.MEMBER}>Membres</option>
+          </Select>
+          <Select
+            aria-label="Filtrer par statut"
+            className="w-28"
+            value={activeFilter}
+            onChange={(event) => setActiveFilter(event.target.value as typeof activeFilter)}
+          >
+            <option value="">Tous statuts</option>
+            <option value="true">Actifs</option>
+            <option value="false">Désactivés</option>
+          </Select>
+          <Select
+            aria-label="Trier les utilisateurs"
+            className="w-36"
+            value={sortBy}
+            onChange={(event) => setSortBy(event.target.value as typeof sortBy)}
+          >
+            <option value="name">Nom</option>
+            <option value="jobTitle">Fonction</option>
+            <option value="globalRole">Rôle</option>
+            <option value="isActive">Statut</option>
+            <option value="lastLoginAt">Connexion</option>
+          </Select>
+          <Select
+            aria-label="Sens du tri"
+            className="w-24"
+            value={sortOrder}
+            onChange={(event) => setSortOrder(event.target.value as typeof sortOrder)}
+          >
+            <option value="asc">A → Z</option>
+            <option value="desc">Z → A</option>
+          </Select>
           <Button variant="primary" onClick={openCreate}>
             <Plus className="size-3.5" strokeWidth={2.5} />
             Nouveau compte
@@ -120,7 +182,7 @@ export function UsersPage() {
               </tr>
             </thead>
             <tbody>
-              {data.items.map((user) => {
+              {sortedUsers.map((user) => {
                 const adminLocked = user.globalRole === GlobalRole.ADMIN && !canManageAdmins;
                 return (
                   <tr

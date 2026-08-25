@@ -7,7 +7,7 @@ describe('ProjectsService.addMember', () => {
     const project = { id: 'project-1', name: 'VisioraAI' };
     const createdMember = {
       id: 'member-1',
-      role: 'DEVELOPER',
+      role: 'MEMBER',
       capacity: null,
       joinedAt: new Date(),
       user: {
@@ -48,7 +48,7 @@ describe('ProjectsService.addMember', () => {
       storage as unknown as ConstructorParameters<typeof ProjectsService>[3],
     );
 
-    await service.addMember('project-1', { userId: 'user-2', role: 'DEVELOPER', capacity: null });
+    await service.addMember('project-1', { userId: 'user-2', role: 'MEMBER', capacity: null });
 
     expect(prisma.notification.create).toHaveBeenCalledWith(
       expect.objectContaining({

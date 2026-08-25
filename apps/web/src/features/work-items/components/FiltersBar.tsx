@@ -2,6 +2,8 @@ import { Search, X } from 'lucide-react';
 import {
   LABELS_FR,
   Priority,
+  SortOrder,
+  WorkItemSortBy,
   WorkItemType,
   type UserDirectoryEntry,
   type WorkItemFilters,
@@ -78,6 +80,20 @@ export function FiltersBar({
       </Select>
 
       <Select
+        aria-label="Filtrer par créateur"
+        className="h-6.5 w-40 text-sm"
+        value={filters.creatorId ?? ''}
+        onChange={(event) => set('creatorId', event.target.value || undefined)}
+      >
+        <option value="">Tous les créateurs</option>
+        {members.map((member) => (
+          <option key={member.id} value={member.id}>
+            {member.name}
+          </option>
+        ))}
+      </Select>
+
+      <Select
         aria-label="Filtrer par priorité"
         className="h-6.5 w-32 text-sm"
         value={filters.priority ?? ''}
@@ -104,6 +120,36 @@ export function FiltersBar({
           </option>
         ))}
       </Select>
+
+      <Select
+        aria-label="Trier les tickets"
+        className="h-6.5 w-36 text-sm"
+        value={filters.sortBy ?? ''}
+        onChange={(event) =>
+          set('sortBy', (event.target.value || undefined) as WorkItemFilters['sortBy'])
+        }
+      >
+        <option value="">Ordre manuel</option>
+        <option value={WorkItemSortBy.KEY}>Identifiant</option>
+        <option value={WorkItemSortBy.TITLE}>Titre</option>
+        <option value={WorkItemSortBy.STATUS}>Statut</option>
+        <option value={WorkItemSortBy.PRIORITY}>Priorité</option>
+        <option value={WorkItemSortBy.CREATED_AT}>Date de création</option>
+        <option value={WorkItemSortBy.UPDATED_AT}>Dernière modification</option>
+        <option value={WorkItemSortBy.DUE_DATE}>Échéance</option>
+      </Select>
+
+      {filters.sortBy && (
+        <Select
+          aria-label="Sens du tri"
+          className="h-6.5 w-28 text-sm"
+          value={filters.sortOrder ?? SortOrder.ASC}
+          onChange={(event) => set('sortOrder', event.target.value as WorkItemFilters['sortOrder'])}
+        >
+          <option value={SortOrder.ASC}>Croissant</option>
+          <option value={SortOrder.DESC}>Décroissant</option>
+        </Select>
+      )}
 
       {showHideDone && (
         <label className="text-ink-700 flex items-center gap-1.5 text-sm">

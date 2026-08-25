@@ -37,11 +37,7 @@ import { WorkItemCard } from '@/features/work-items/components/WorkItemCard';
 import { WorkItemDetailPanel } from '@/features/work-items/components/WorkItemDetailPanel';
 import { useBacklog, useBoard, useMoveWorkItem } from '@/features/work-items/hooks';
 import { useUrlWorkItemFilters } from '@/features/work-items/use-url-work-item-filters';
-import {
-  loadBoardConfig,
-  type BoardConfig,
-  type ColumnDefinition,
-} from '../board-config';
+import { loadBoardConfig, type BoardConfig, type ColumnDefinition } from '../board-config';
 import { BoardColumnsConfigDialog } from '../components/BoardColumnsConfigDialog';
 
 const COLUMN_PREFIX = 'column:';
@@ -80,20 +76,14 @@ export function BoardPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const directory = useMemo(
-    () => (members ?? []).map((member) => member.user),
-    [members],
-  );
+  const directory = useMemo(() => (members ?? []).map((member) => member.user), [members]);
 
   const visibleDefs = useMemo(
     () => boardConfig.columns.filter((c) => c.visible !== false),
     [boardConfig],
   );
 
-  const allItems = useMemo(
-    () => columns?.flatMap((column) => column.items) ?? [],
-    [columns],
-  );
+  const allItems = useMemo(() => columns?.flatMap((column) => column.items) ?? [], [columns]);
 
   const draggedItem = useMemo(
     () => allItems.find((item) => item.id === draggedId) ?? null,
@@ -111,10 +101,12 @@ export function BoardPage() {
         id: `user-${user.id}`,
         title: user.name,
         avatarUrl: user.avatarUrl,
-        items: allItems.filter((item) => item.assignee?.id === user.id),
+        items: allItems.filter((item) =>
+          item.assignees.some((assignee) => assignee.id === user.id),
+        ),
       }));
 
-      const unassigned = allItems.filter((item) => !item.assignee);
+      const unassigned = allItems.filter((item) => item.assignees.length === 0);
       if (unassigned.length > 0) {
         groups.push({
           id: 'unassigned',
@@ -126,11 +118,13 @@ export function BoardPage() {
     }
 
     if (swimlane === 'priority') {
-      return [Priority.CRITICAL, Priority.HIGH, Priority.MEDIUM, Priority.LOW].map((p) => ({
-        id: `priority-${p}`,
-        title: LABELS_FR.priority[p],
-        items: allItems.filter((item) => item.priority === p),
-      })).filter((g) => g.items.length > 0);
+      return [Priority.CRITICAL, Priority.HIGH, Priority.MEDIUM, Priority.LOW]
+        .map((p) => ({
+          id: `priority-${p}`,
+          title: LABELS_FR.priority[p],
+          items: allItems.filter((item) => item.priority === p),
+        }))
+        .filter((g) => g.items.length > 0);
     }
 
     if (swimlane === 'epic') {
@@ -220,11 +214,7 @@ export function BoardPage() {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          {!canMove && (
-            <span className="text-ink-400 text-xs">
-              Lecture seule
-            </span>
-          )}
+          {!canMove && <span className="text-ink-400 text-xs">Lecture seule</span>}
           <Button
             variant="ghost"
             size="sm"
@@ -294,7 +284,10 @@ export function BoardPage() {
               const lanePoints = lane.items.reduce((acc, it) => acc + (it.storyPoints ?? 0), 0);
 
               return (
-                <section key={lane.id} className="border-border-default bg-surface rounded border overflow-hidden shadow-xs">
+                <section
+                  key={lane.id}
+                  className="border-border-default bg-surface rounded border overflow-hidden shadow-xs"
+                >
                   <header
                     onClick={() => toggleLane(lane.id)}
                     className="bg-surface-muted hover:bg-surface-sunken border-border-subtle flex items-center gap-2 border-b px-3 py-2 cursor-pointer transition-colors"
@@ -323,7 +316,10 @@ export function BoardPage() {
                             columnDef={def}
                             items={laneColItems}
                             count={laneColItems.length}
-                            points={laneColItems.reduce((acc, it) => acc + (it.storyPoints ?? 0), 0)}
+                            points={laneColItems.reduce(
+                              (acc, it) => acc + (it.storyPoints ?? 0),
+                              0,
+                            )}
                             onOpen={setOpenItemId}
                             draggable={canMove}
                             canCreate={canCreate && def.status === WorkItemStatus.TODO}
@@ -408,9 +404,7 @@ function Column({
         </h2>
         <span
           className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-            isOverWip
-              ? 'bg-red-100 text-danger font-bold'
-              : 'text-ink-400 bg-surface'
+            isOverWip ? 'bg-red-100 text-danger font-bold' : 'text-ink-400 bg-surface'
           }`}
         >
           {count}
