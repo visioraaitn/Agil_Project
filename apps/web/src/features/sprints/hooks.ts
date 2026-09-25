@@ -3,10 +3,23 @@ import type {
   CloseSprintInput,
   CreateSprintInput,
   ListSprintsQuery,
+  SprintSummary,
   UpdateRetrospectiveInput,
   UpdateSprintInput,
 } from '@visiora/shared';
+import { SprintStatus } from '@visiora/shared';
 import { sprintsApi } from './api';
+
+/**
+ * Sprint sélectionné par défaut : le sprint actif s'il existe, sinon le
+ * premier de la liste (déjà triée `startDate desc` par l'API). Partagé entre
+ * la page Sprints et le Board pour ne pas dupliquer la règle de fallback.
+ */
+export function defaultSprintId(sprints: SprintSummary[] | undefined): string | null {
+  if (!sprints || sprints.length === 0) return null;
+  const fallback = sprints.find((sprint) => sprint.status === SprintStatus.ACTIVE) ?? sprints[0];
+  return fallback?.id ?? null;
+}
 
 export const sprintKeys = {
   list: (projectRef: string, query: ListSprintsQuery = {}) =>

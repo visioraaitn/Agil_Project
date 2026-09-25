@@ -251,6 +251,10 @@ export class WorkItemsService {
         },
       });
 
+      if (closesNow) {
+        await this.cascadeCloseDescendants(tx, itemId);
+      }
+
       // Les étiquettes sont remplacées en bloc : le client envoie l'état voulu.
       if (input.labelIds) {
         await tx.workItemLabel.deleteMany({ where: { workItemId: itemId } });
@@ -321,6 +325,7 @@ export class WorkItemsService {
     }
 
     const data: Prisma.WorkItemUpdateInput = {};
+    let closesNow = false;
 
     // Déplacement de colonne : on recalcule le rang board.
     if (input.status !== undefined || input.beforeId || input.afterId) {
@@ -328,6 +333,7 @@ export class WorkItemsService {
       const isBoardMove = input.status !== undefined;
 
       if (isBoardMove) {
+        closesNow = targetStatus === WorkItemStatus.DONE && item.status !== WorkItemStatus.DONE;
         data.status = targetStatus;
         data.closedAt = targetStatus === WorkItemStatus.DONE ? new Date() : null;
         data.boardRank = await this.ranking.computeRank(
@@ -369,6 +375,12 @@ export class WorkItemsService {
           targetParentId,
         );
         await tx.workItem.update({ where: { id: itemId }, data: { ...data, number } });
+        if (closesNow) await this.cascadeCloseDescendants(tx, itemId);
+      });
+    } else if (closesNow) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.workItem.update({ where: { id: itemId }, data });
+        await this.cascadeCloseDescendants(tx, itemId);
       });
     } else {
       await this.prisma.workItem.update({ where: { id: itemId }, data });
@@ -555,14 +567,21 @@ export class WorkItemsService {
     }
   }
 
-  /** Identifiants du ticket et de toute sa descendance. */
-  private async collectDescendants(itemId: string): Promise<string[]> {
+  /**
+   * Identifiants du ticket et de toute sa descendance. `client` permet de
+   * lire à l'intérieur d'une transaction en cours (ex. fermeture en cascade)
+   * plutôt qu'avec une connexion séparée.
+   */
+  private async collectDescendants(
+    itemId: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<string[]> {
     const collected = [itemId];
     let frontier = [itemId];
 
     // La hiérarchie est bornée à 3 niveaux ; la boucle reste courte.
     while (frontier.length > 0) {
-      const children = await this.prisma.workItem.findMany({
+      const children = await client.workItem.findMany({
         where: { parentId: { in: frontier }, deletedAt: null },
         select: { id: true },
       });
@@ -571,6 +590,28 @@ export class WorkItemsService {
     }
 
     return collected;
+  }
+
+  /**
+   * D.1/C.1 · Fermeture en cascade : quand un ticket passe à `DONE`, tous ses
+   * descendants encore ouverts passent aussi à `DONE`, dans la même
+   * transaction que la mise à jour du parent. Ne dépend pas du type du ticket
+   * appelant : une sous-tâche n'a pas de descendant, l'appel est alors un
+   * no-op — pas besoin de condition sur le type avant d'appeler cette méthode.
+   */
+  private async cascadeCloseDescendants(
+    tx: Prisma.TransactionClient,
+    itemId: string,
+  ): Promise<void> {
+    const descendantIds = (await this.collectDescendants(itemId, tx)).filter(
+      (id) => id !== itemId,
+    );
+    if (descendantIds.length === 0) return;
+
+    await tx.workItem.updateMany({
+      where: { id: { in: descendantIds }, status: { not: WorkItemStatus.DONE } },
+      data: { status: WorkItemStatus.DONE, closedAt: new Date() },
+    });
   }
 
   private async assertReferences(

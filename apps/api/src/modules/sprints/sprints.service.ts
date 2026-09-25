@@ -117,24 +117,69 @@ export class SprintsService {
       });
     }
 
-    const items = await this.prisma.workItem.findMany({
-      where: { projectId, sprintId, deletedAt: null },
-      select: { storyPoints: true, status: true },
-    });
-    const committedPoints = items.reduce((total, item) => total + (item.storyPoints ?? 0), 0);
-    const completedPoints = items
-      .filter((item) => item.status === WorkItemStatus.DONE)
-      .reduce((total, item) => total + (item.storyPoints ?? 0), 0);
+    if (input.targetSprintId) {
+      if (input.targetSprintId === sprintId) {
+        throw new BadRequestException({
+          code: 'INVALID_TARGET_SPRINT',
+          message: 'Le sprint de destination doit etre different du sprint cloture',
+        });
+      }
+      const target = await this.prisma.sprint.findFirst({
+        where: { id: input.targetSprintId, projectId },
+        select: { status: true },
+      });
+      if (!target) {
+        throw new BadRequestException({
+          code: 'INVALID_TARGET_SPRINT',
+          message: "Ce sprint de destination n'appartient pas au projet",
+        });
+      }
+      if (target.status === SprintStatus.COMPLETED) {
+        throw new BadRequestException({
+          code: 'INVALID_TARGET_SPRINT',
+          message: 'Le sprint de destination ne peut pas etre deja cloture',
+        });
+      }
+    }
 
-    await this.prisma.sprint.update({
-      where: { id: sprintId },
-      data: {
-        status: SprintStatus.COMPLETED,
-        committedPoints,
-        completedPoints,
-        closedAt: new Date(),
-        retroSummary: input.retroSummary ?? undefined,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      // Tous les types de tickets peuvent porter un sprintId (pas seulement les stories) :
+      // un bug ou une sous-tache encore ouverte doit aussi pouvoir etre reportee.
+      const items = await tx.workItem.findMany({
+        where: { projectId, sprintId, deletedAt: null },
+        select: { id: true, storyPoints: true, status: true },
+      });
+      const committedPoints = items.reduce((total, item) => total + (item.storyPoints ?? 0), 0);
+      const unfinished = items.filter((item) => item.status !== WorkItemStatus.DONE);
+      const completedPoints = committedPoints - unfinished.reduce(
+        (total, item) => total + (item.storyPoints ?? 0),
+        0,
+      );
+
+      if (unfinished.length > 0 && !input.targetSprintId) {
+        throw new BadRequestException({
+          code: 'TARGET_SPRINT_REQUIRED',
+          message: 'Choisissez un sprint de destination pour les elements non termines',
+        });
+      }
+
+      if (unfinished.length > 0 && input.targetSprintId) {
+        await tx.workItem.updateMany({
+          where: { id: { in: unfinished.map((item) => item.id) } },
+          data: { sprintId: input.targetSprintId },
+        });
+      }
+
+      await tx.sprint.update({
+        where: { id: sprintId },
+        data: {
+          status: SprintStatus.COMPLETED,
+          committedPoints,
+          completedPoints,
+          closedAt: new Date(),
+          retroSummary: input.retroSummary ?? undefined,
+        },
+      });
     });
 
     return this.getById(projectId, sprintId);

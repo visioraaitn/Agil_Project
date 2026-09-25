@@ -51,6 +51,8 @@ export type UpdateRetrospectiveInput = z.infer<typeof updateRetrospectiveSchema>
 
 export const closeSprintSchema = z.object({
   retroSummary: z.string().trim().max(5000).nullable().optional(),
+  /** Sprint destination pour les elements non termines ; requis si le sprint en a. */
+  targetSprintId: uuidSchema.nullable().optional(),
 });
 export type CloseSprintInput = z.infer<typeof closeSprintSchema>;
 

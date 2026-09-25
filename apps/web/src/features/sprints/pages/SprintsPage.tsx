@@ -34,11 +34,13 @@ import { Field } from '@/components/ui/field';
 import { Input, Textarea } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { useProjectPermissions } from '@/features/projects/hooks';
+import { CreateWorkItemDialog } from '@/features/work-items/components/CreateWorkItemDialog';
 import { StatusPill, StoryPoints } from '@/features/work-items/components/WorkItemChrome';
 import { useBacklog, useUpdateWorkItem } from '@/features/work-items/hooks';
+import { CloseSprintDialog } from '../components/CloseSprintDialog';
 import { SprintReportDialog } from '../components/SprintReportDialog';
 import {
-  useCloseSprint,
+  defaultSprintId,
   useCreateSprint,
   useSprint,
   useSprints,
@@ -55,15 +57,12 @@ export function SprintsPage() {
   const { data: sprints, isLoading, error } = useSprints(projectKey);
   const { data: selected, isLoading: detailLoading } = useSprint(projectKey, selectedId);
   const { can } = useProjectPermissions(projectKey);
-  const closeSprint = useCloseSprint(projectKey);
   const updateSprint = useUpdateSprint(projectKey);
 
   useEffect(() => {
-    if (selectedId || !sprints?.length) return;
-    const defaultSprint =
-      sprints.find((sprint) => sprint.status === SprintStatusEnum.ACTIVE) ?? sprints[0];
-    if (!defaultSprint) return;
-    setSelectedId(defaultSprint.id);
+    if (selectedId) return;
+    const fallback = defaultSprintId(sprints);
+    if (fallback) setSelectedId(fallback);
   }, [selectedId, sprints]);
 
   if (isLoading) return <LoadingState />;
@@ -124,6 +123,7 @@ export function SprintsPage() {
             sprint={selected}
             canClose={can('sprint:close')}
             canAssign={can('workitem:update')}
+            canCreate={can('workitem:create')}
             canStart={can('sprint:manage')}
             onStartSprint={() =>
               updateSprint.mutate({
@@ -133,8 +133,6 @@ export function SprintsPage() {
             }
             starting={updateSprint.isPending}
             startError={updateSprint.error}
-            onCloseSprint={() => closeSprint.mutate({ sprintId: selected.id, input: {} })}
-            closing={closeSprint.isPending}
             projectRef={projectKey}
           />
         )}
@@ -154,30 +152,32 @@ function SprintDetailView({
   sprint,
   canClose,
   canAssign,
+  canCreate,
   canStart,
   starting,
   startError,
   onStartSprint,
-  closing,
-  onCloseSprint,
   projectRef,
 }: {
   sprint: SprintDetail;
   canClose: boolean;
   canAssign: boolean;
+  canCreate: boolean;
   canStart: boolean;
   starting: boolean;
   startError: unknown;
   onStartSprint: () => void;
-  closing: boolean;
-  onCloseSprint: () => void;
   projectRef: string;
 }) {
   const [reportOpen, setReportOpen] = useState(false);
   const [assignmentOpen, setAssignmentOpen] = useState(false);
+  const [closeOpen, setCloseOpen] = useState(false);
+  const [newItemOpen, setNewItemOpen] = useState(false);
   const { data: backlog, isLoading: backlogLoading } = useBacklog(projectRef, {
     type: WorkItemType.STORY,
   });
+  // Arbre complet (tous types) pour le sélecteur de parent du dialog de création.
+  const { data: fullBacklog } = useBacklog(projectRef, {});
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -202,6 +202,12 @@ function SprintDetailView({
               Affecter des US
             </Button>
           )}
+          {canCreate && sprint.status !== SprintStatusEnum.COMPLETED && (
+            <Button variant="secondary" onClick={() => setNewItemOpen(true)}>
+              <Plus className="size-3.5" strokeWidth={2} />
+              New Item
+            </Button>
+          )}
           <Button
             variant="ghost"
             onClick={() => setReportOpen(true)}
@@ -211,7 +217,7 @@ function SprintDetailView({
             <span>Rapport</span>
           </Button>
           {canClose && sprint.status !== SprintStatusEnum.COMPLETED && (
-            <Button variant="secondary" onClick={onCloseSprint} loading={closing}>
+            <Button variant="secondary" onClick={() => setCloseOpen(true)}>
               <Flag className="size-3.5" strokeWidth={2} />
               Clôturer
             </Button>
@@ -236,6 +242,21 @@ function SprintDetailView({
         sprint={sprint}
         candidates={backlog ?? []}
         loading={backlogLoading}
+      />
+
+      <CloseSprintDialog
+        open={closeOpen}
+        onClose={() => setCloseOpen(false)}
+        projectRef={projectRef}
+        sprint={sprint}
+      />
+
+      <CreateWorkItemDialog
+        open={newItemOpen}
+        onClose={() => setNewItemOpen(false)}
+        projectRef={projectRef}
+        candidates={fullBacklog ?? []}
+        defaultSprintId={sprint.id}
       />
 
       <section className="grid grid-cols-4 gap-3">

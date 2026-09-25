@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   DndContext,
@@ -23,28 +23,31 @@ import { ChevronDown, ChevronRight, Layers, Plus, SlidersHorizontal } from 'luci
 import {
   LABELS_FR,
   Priority,
-  SprintStatus,
   WorkItemStatus,
+  WorkItemType,
   type BoardColumn,
   type WorkItemSummary,
 } from '@visiora/shared';
 import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/input';
 import { Avatar } from '@/components/common/Avatar';
 import { EmptyState, ErrorState, LoadingState } from '@/components/common/StateMessage';
 import { useProjectMembers, useProjectPermissions } from '@/features/projects/hooks';
-import { useSprints } from '@/features/sprints/hooks';
+import { defaultSprintId, useSprints } from '@/features/sprints/hooks';
 import { CreateWorkItemDialog } from '@/features/work-items/components/CreateWorkItemDialog';
 import { FiltersBar } from '@/features/work-items/components/FiltersBar';
+import { TypeIcon } from '@/features/work-items/components/WorkItemChrome';
 import { WorkItemCard } from '@/features/work-items/components/WorkItemCard';
 import { WorkItemDetailPanel } from '@/features/work-items/components/WorkItemDetailPanel';
 import { useBacklog, useBoard, useMoveWorkItem } from '@/features/work-items/hooks';
 import { useUrlWorkItemFilters } from '@/features/work-items/use-url-work-item-filters';
 import { loadBoardConfig, type BoardConfig, type ColumnDefinition } from '../board-config';
 import { BoardColumnsConfigDialog } from '../components/BoardColumnsConfigDialog';
+import { buildHierarchyLanes } from '../hierarchy';
 
 const COLUMN_PREFIX = 'column:';
 
-type SwimlaneMode = 'none' | 'assignee' | 'epic' | 'priority';
+type SwimlaneMode = 'none' | 'assignee' | 'epic' | 'priority' | 'hierarchy';
 
 interface SwimlaneGroup {
   id: string;
@@ -65,17 +68,27 @@ export function BoardPage() {
   const [collapsedLanes, setCollapsedLanes] = useState<Set<string>>(new Set());
   const [boardConfig, setBoardConfig] = useState<BoardConfig>(() => loadBoardConfig(projectKey));
 
+  const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null);
   const { data: sprints, isLoading: sprintsLoading, error: sprintsError } = useSprints(projectKey);
-  const activeSprint = sprints?.find((sprint) => sprint.status === SprintStatus.ACTIVE) ?? null;
+
+  // Le sprint actif est sélectionné automatiquement à l'ouverture ; l'utilisateur
+  // peut ensuite en choisir un autre via le sélecteur du header.
+  useEffect(() => {
+    if (selectedSprintId) return;
+    const fallback = defaultSprintId(sprints);
+    if (fallback) setSelectedSprintId(fallback);
+  }, [selectedSprintId, sprints]);
+
+  const selectedSprint = sprints?.find((sprint) => sprint.id === selectedSprintId) ?? null;
   const boardFilters = useMemo(
-    () => ({ ...filters, sprintId: activeSprint?.id }),
-    [activeSprint?.id, filters],
+    () => ({ ...filters, sprintId: selectedSprint?.id }),
+    [selectedSprint?.id, filters],
   );
   const {
     data: columns,
     isLoading,
     error,
-  } = useBoard(projectKey, boardFilters, Boolean(activeSprint));
+  } = useBoard(projectKey, boardFilters, Boolean(selectedSprint));
   const { data: tree } = useBacklog(projectKey, {});
   const { data: members } = useProjectMembers(projectKey);
   const { can } = useProjectPermissions(projectKey);
@@ -163,6 +176,13 @@ export function BoardPage() {
     return [{ id: 'all', title: 'Tous les tickets', items: allItems }];
   }, [swimlane, columns, allItems, directory, tree]);
 
+  // Couloirs Epic > Story/Bug du mode "Par hiérarchie" : construits séparément
+  // de swimlaneGroups (logique de résolution d'ascendance différente).
+  const hierarchyBoard = useMemo(
+    () => buildHierarchyLanes(tree ?? [], allItems),
+    [tree, allItems],
+  );
+
   const toggleLane = (laneId: string) => {
     setCollapsedLanes((prev) => {
       const next = new Set(prev);
@@ -199,15 +219,15 @@ export function BoardPage() {
 
   if (sprintsLoading || isLoading) return <LoadingState />;
   if (sprintsError || error) return <ErrorState error={sprintsError ?? error} />;
-  if (!activeSprint) {
+  if (!selectedSprint) {
     return (
       <div className="flex h-full flex-col">
         <header className="border-border-subtle border-b px-4 py-2">
           <h1 className="text-ink-900 text-xl font-semibold">Task Board</h1>
         </header>
         <EmptyState
-          title="Aucun sprint actif"
-          description="Activez un sprint et affectez-y des User Stories pour alimenter le board."
+          title={sprints && sprints.length > 0 ? 'Sélectionnez un sprint' : 'Aucun sprint'}
+          description="Créez un sprint et affectez-y des User Stories pour alimenter le board."
         />
       </div>
     );
@@ -221,9 +241,18 @@ export function BoardPage() {
         <span className="text-ink-400 text-sm">
           {columns.reduce((total, column) => total + column.count, 0)} ticket(s)
         </span>
-        <span className="bg-accent-50 text-accent-700 rounded px-2 py-0.5 text-xs font-semibold">
-          {activeSprint.name}
-        </span>
+        <Select
+          aria-label="Sélectionner un sprint"
+          className="h-7 w-52 text-sm"
+          value={selectedSprint.id}
+          onChange={(event) => setSelectedSprintId(event.target.value)}
+        >
+          {(sprints ?? []).map((sprint) => (
+            <option key={sprint.id} value={sprint.id}>
+              {sprint.name} · {LABELS_FR.sprintStatus[sprint.status]}
+            </option>
+          ))}
+        </Select>
 
         {/* Sélecteur de Swimlanes */}
         <div className="ml-4 flex items-center gap-1.5 text-xs text-ink-500 bg-surface-sunken px-2 py-1 rounded border border-border-subtle">
@@ -238,6 +267,7 @@ export function BoardPage() {
             <option value="assignee">Par Assigné</option>
             <option value="epic">Par Epic</option>
             <option value="priority">Par Priorité</option>
+            <option value="hierarchy">Par hiérarchie</option>
           </select>
         </div>
 
@@ -276,7 +306,146 @@ export function BoardPage() {
         onDragEnd={onDragEnd}
       >
         <div className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
-          {swimlane === 'none' ? (
+          {swimlane === 'hierarchy' ? (
+            /* Vue hiérarchique Epic > Story/Bug, chaque niveau repliable indépendamment */
+            <>
+              {hierarchyBoard.epics.map((epicLane) => {
+                const epicLaneId = `epic:${epicLane.id}`;
+                const epicCollapsed = collapsedLanes.has(epicLaneId);
+                const epicItems = epicLane.stories.flatMap((story) => story.items);
+                const epicPoints = epicItems.reduce((acc, it) => acc + (it.storyPoints ?? 0), 0);
+
+                return (
+                  <section
+                    key={epicLane.id}
+                    className="border-border-default bg-surface rounded border overflow-hidden shadow-xs"
+                  >
+                    <header
+                      onClick={() => toggleLane(epicLaneId)}
+                      className="bg-surface-muted hover:bg-surface-sunken border-border-subtle flex items-center gap-2 border-b px-3 py-2 cursor-pointer transition-colors"
+                    >
+                      {epicCollapsed ? (
+                        <ChevronRight className="size-4 text-ink-500" />
+                      ) : (
+                        <ChevronDown className="size-4 text-ink-500" />
+                      )}
+                      {!epicLane.isNoEpic && <TypeIcon type={WorkItemType.EPIC} />}
+                      <h2 className="text-ink-900 text-sm font-semibold truncate">
+                        {epicLane.isNoEpic ? epicLane.title : `${epicLane.key} · ${epicLane.title}`}
+                      </h2>
+                      <span className="text-ink-400 text-xs font-medium">
+                        ({epicItems.length} tickets · {epicPoints} pts)
+                      </span>
+                    </header>
+
+                    {!epicCollapsed && (
+                      <div className="flex flex-col gap-1.5 p-2.5 bg-surface-sunken/40">
+                        {epicLane.stories.map((storyLane) => {
+                          const storyLaneId = `story:${storyLane.id}`;
+                          const storyCollapsed = collapsedLanes.has(storyLaneId);
+                          const storyPoints = storyLane.items.reduce(
+                            (acc, it) => acc + (it.storyPoints ?? 0),
+                            0,
+                          );
+
+                          return (
+                            <div
+                              key={storyLane.id}
+                              className="border-border-default bg-surface rounded border overflow-hidden"
+                            >
+                              <header
+                                onClick={() => toggleLane(storyLaneId)}
+                                className="hover:bg-surface-muted flex items-center gap-2 px-2.5 py-1.5 cursor-pointer transition-colors"
+                              >
+                                {storyCollapsed ? (
+                                  <ChevronRight className="size-3.5 text-ink-500" />
+                                ) : (
+                                  <ChevronDown className="size-3.5 text-ink-500" />
+                                )}
+                                <span className="text-ink-400 shrink-0 text-xs font-semibold">
+                                  {storyLane.key}
+                                </span>
+                                <span className="text-ink-900 min-w-0 flex-1 truncate text-sm">
+                                  {storyLane.title}
+                                </span>
+                                <span className="text-ink-400 text-xs font-medium">
+                                  ({storyLane.items.length} · {storyPoints} pts)
+                                </span>
+                              </header>
+
+                              {!storyCollapsed && (
+                                <div className="flex gap-2.5 overflow-x-auto p-2 items-start border-t border-border-subtle bg-surface-sunken/40">
+                                  {visibleDefs.map((def) => {
+                                    const colItems = storyLane.items.filter(
+                                      (it) => it.status === def.status,
+                                    );
+                                    return (
+                                      <Column
+                                        key={`${storyLane.id}-${def.id}`}
+                                        columnDef={def}
+                                        items={colItems}
+                                        count={colItems.length}
+                                        points={colItems.reduce(
+                                          (acc, it) => acc + (it.storyPoints ?? 0),
+                                          0,
+                                        )}
+                                        onOpen={setOpenItemId}
+                                        draggable={canMove}
+                                        canCreate={false}
+                                        onOpenCreateDialog={() => setCreateDialogOpen(true)}
+                                      />
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
+
+              {hierarchyBoard.unlinked.length > 0 && (
+                <section className="border-border-default bg-surface rounded border overflow-hidden shadow-xs">
+                  <header className="bg-surface-muted border-border-subtle flex items-center gap-2 border-b px-3 py-2">
+                    <h2 className="text-ink-900 text-sm font-semibold">Éléments non liés</h2>
+                    <span className="text-ink-400 text-xs font-medium">
+                      ({hierarchyBoard.unlinked.length} tickets)
+                    </span>
+                  </header>
+                  <div className="flex gap-2.5 overflow-x-auto p-2.5 items-start bg-surface-sunken/40">
+                    {visibleDefs.map((def) => {
+                      const colItems = hierarchyBoard.unlinked.filter(
+                        (it) => it.status === def.status,
+                      );
+                      return (
+                        <Column
+                          key={`unlinked-${def.id}`}
+                          columnDef={def}
+                          items={colItems}
+                          count={colItems.length}
+                          points={colItems.reduce((acc, it) => acc + (it.storyPoints ?? 0), 0)}
+                          onOpen={setOpenItemId}
+                          draggable={canMove}
+                          canCreate={false}
+                          onOpenCreateDialog={() => setCreateDialogOpen(true)}
+                        />
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {hierarchyBoard.epics.length === 0 && hierarchyBoard.unlinked.length === 0 && (
+                <EmptyState
+                  title="Aucun ticket"
+                  description="Ce sprint ne contient encore aucune Story, Bug ou Sous-tâche."
+                />
+              )}
+            </>
+          ) : swimlane === 'none' ? (
             /* Vue classique en colonnes uniques */
             <div className="flex gap-2.5 overflow-x-auto items-start pb-2">
               {visibleDefs.map((def) => {
@@ -379,7 +548,7 @@ export function BoardPage() {
         projectRef={projectKey}
         candidates={tree ?? []}
         defaultStatus={WorkItemStatus.TODO}
-        defaultSprintId={activeSprint.id}
+        defaultSprintId={selectedSprint.id}
       />
 
       <WorkItemDetailPanel
