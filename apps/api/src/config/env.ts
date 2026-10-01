@@ -32,7 +32,10 @@ export const envSchema = z
 
     DATABASE_URL: z.string().url(),
 
-    API_PORT: z.coerce.number().int().positive().default(3000),
+    API_PORT: z.preprocess(
+      (val) => val ?? process.env.PORT,
+      z.coerce.number().int().positive().default(3000),
+    ),
     API_PREFIX: z.string().default('/api/v1'),
     CORS_ORIGIN: z.string().default('http://localhost:5173'),
     APP_URL: z.string().url().default('http://localhost:5173'),

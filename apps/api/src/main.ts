@@ -89,7 +89,7 @@ async function bootstrap(): Promise<void> {
     });
   }
 
-  const server = await app.listen(port);
+  const server = await app.listen(port, '0.0.0.0');
   server.requestTimeout = 120_000;
   server.headersTimeout = 65_000;
   server.keepAliveTimeout = 60_000;

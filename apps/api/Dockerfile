@@ -28,5 +28,5 @@ COPY --from=build /app/apps/api/prisma ./apps/api/prisma
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist
 COPY apps/api/package.json apps/api/package.json
 COPY packages/shared/package.json packages/shared/package.json
-EXPOSE 3000
+EXPOSE 3000 10000
 CMD ["node", "apps/api/dist/src/main.js"]
