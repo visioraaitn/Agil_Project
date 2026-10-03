@@ -160,6 +160,14 @@ export function useReorderBacklog(projectRef: string) {
   });
 }
 
+export function useImportWorkItems(projectRef: string) {
+  const invalidate = useInvalidateWorkItems(projectRef);
+  return useMutation({
+    mutationFn: (file: File) => workItemsApi.import(projectRef, file),
+    onSuccess: invalidate,
+  });
+}
+
 export function useCreateLabel(projectRef: string) {
   const queryClient = useQueryClient();
   return useMutation({

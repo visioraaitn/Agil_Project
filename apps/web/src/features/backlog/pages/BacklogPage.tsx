@@ -17,7 +17,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ChevronDown, ChevronRight, GripVertical, Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, GripVertical, Plus, Upload } from 'lucide-react';
 import type { BacklogNode } from '@visiora/shared';
 import { WorkItemStatus } from '@visiora/shared';
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,7 @@ import {
 import { useProjectMembers, useProjectPermissions } from '@/features/projects/hooks';
 import { CreateWorkItemDialog } from '@/features/work-items/components/CreateWorkItemDialog';
 import { FiltersBar } from '@/features/work-items/components/FiltersBar';
+import { ImportBacklogDialog } from '@/features/work-items/components/ImportBacklogDialog';
 import { WorkItemDetailPanel } from '@/features/work-items/components/WorkItemDetailPanel';
 import {
   LabelChips,
@@ -51,6 +52,7 @@ export function BacklogPage() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [openItemId, setOpenItemId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [dragError, setDragError] = useState<unknown>(null);
 
   const { data: tree, isLoading, error } = useBacklog(projectKey, filters);
@@ -129,10 +131,20 @@ export function BacklogPage() {
         <h1 className="text-ink-900 text-xl font-semibold">Backlog</h1>
         <span className="text-ink-400 text-sm">{rows.length} ligne(s)</span>
         {can('workitem:create') && (
-          <Button variant="primary" className="ml-auto" onClick={() => setDialogOpen(true)}>
-            <Plus className="size-3.5" strokeWidth={2.5} />
-            Nouveau ticket
-          </Button>
+          <>
+            <Button
+              variant="secondary"
+              className="ml-auto"
+              onClick={() => setImportOpen(true)}
+            >
+              <Upload className="size-3.5" strokeWidth={2} />
+              Importer
+            </Button>
+            <Button variant="primary" onClick={() => setDialogOpen(true)}>
+              <Plus className="size-3.5" strokeWidth={2.5} />
+              Nouveau ticket
+            </Button>
+          </>
         )}
       </header>
 
@@ -203,6 +215,12 @@ export function BacklogPage() {
         onClose={() => setDialogOpen(false)}
         projectRef={projectKey}
         candidates={tree ?? []}
+      />
+
+      <ImportBacklogDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        projectRef={projectKey}
       />
 
       <WorkItemDetailPanel

@@ -8,6 +8,7 @@ import type {
   UpdateWorkItemInput,
   WorkItemDetail,
   WorkItemFilters,
+  WorkItemImportSummary,
   WorkItemSummary,
 } from '@visiora/shared';
 import { api } from '@/lib/api-client';
@@ -56,6 +57,13 @@ export const workItemsApi = {
 
   remove: (projectRef: string, itemId: string) =>
     api.delete<void>(`/projects/${projectRef}/work-items/${itemId}`),
+
+  /** C.1 · Import de backlog depuis un fichier Excel/CSV — ajout uniquement. */
+  import: (projectRef: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post<WorkItemImportSummary>(`/projects/${projectRef}/work-items/import`, formData);
+  },
 };
 
 export const labelsApi = {

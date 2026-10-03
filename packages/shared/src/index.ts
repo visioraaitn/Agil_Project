@@ -8,6 +8,7 @@ export * from './dto/user';
 export * from './dto/project';
 export * from './dto/project-document';
 export * from './dto/work-item';
+export * from './dto/work-item-import';
 export * from './dto/label';
 export * from './dto/sprint';
 export * from './dto/repository';

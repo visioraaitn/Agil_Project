@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -10,17 +11,22 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBody, ApiConsumes, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import {
   AuthenticatedUser,
   BacklogNode,
   BoardColumn,
   CreateWorkItemInput,
+  MAX_IMPORT_SIZE_MB,
   MoveWorkItemInput,
   UpdateWorkItemInput,
   WorkItemDetail,
   WorkItemFilters,
+  WorkItemImportSummary,
   WorkItemSummary,
   createWorkItemSchema,
   moveWorkItemSchema,
@@ -31,13 +37,18 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ProjectId } from '../../common/decorators/project-id.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import type { UploadedFileLike } from '../storage/object-storage.service';
+import { WorkItemImportService } from './work-item-import.service';
 import { WorkItemsService } from './work-items.service';
 
 @ApiTags('work-items')
 @ApiParam({ name: 'projectId', description: 'UUID du projet ou clé courte (ex. VIS)' })
 @Controller('projects/:projectId')
 export class WorkItemsController {
-  constructor(private readonly workItems: WorkItemsService) {}
+  constructor(
+    private readonly workItems: WorkItemsService,
+    private readonly workItemImport: WorkItemImportService,
+  ) {}
 
   @Get('backlog')
   @ApiOperation({ summary: 'Backlog hiérarchique : Epic > Story > Sous-tâche' })
@@ -64,6 +75,33 @@ export class WorkItemsController {
     @Param('itemId', ParseUUIDPipe) itemId: string,
   ): Promise<WorkItemDetail> {
     return this.workItems.getById(projectId, itemId);
+  }
+
+  @Post('work-items/import')
+  @RequirePermission('workitem:create')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: MAX_IMPORT_SIZE_MB * 1024 * 1024, files: 1 } }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+      required: ['file'],
+    },
+  })
+  @ApiOperation({
+    summary: 'Import de backlog depuis un fichier Excel/CSV (ajout, jamais de suppression)',
+  })
+  importBacklog(
+    @ProjectId() projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file: UploadedFileLike | undefined,
+  ): Promise<WorkItemImportSummary> {
+    if (!file) {
+      throw new BadRequestException({ code: 'IMPORT_FILE_REQUIRED', message: 'Aucun fichier reçu' });
+    }
+    return this.workItemImport.importFromFile(projectId, file, user.id);
   }
 
   @Post('work-items')

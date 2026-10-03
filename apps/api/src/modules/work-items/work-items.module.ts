@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
 import { WorkItemsController } from './work-items.controller';
 import { WorkItemsService } from './work-items.service';
+import { WorkItemImportService } from './work-item-import.service';
 import { RankingService } from './ranking.service';
 
 @Module({
   controllers: [WorkItemsController],
-  providers: [WorkItemsService, RankingService],
+  providers: [WorkItemsService, RankingService, WorkItemImportService],
   exports: [WorkItemsService],
 })
 export class WorkItemsModule {}
