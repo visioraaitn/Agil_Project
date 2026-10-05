@@ -46,15 +46,19 @@ export function CreateWorkItemDialog({
   const createItem = useCreateWorkItem(projectRef);
   const { data: members } = useProjectMembers(projectRef);
   const { data: sprints } = useSprints(projectRef);
+  const initialSprintId =
+    defaultSprintId !== undefined
+      ? defaultSprintId
+      : flatten(candidates).find((node) => node.id === defaultParentId)?.sprintId;
   const [form, setForm] = useState(() => emptyForm(defaultType, defaultParentId, defaultSprintId));
   const [submitError, setSubmitError] = useState<unknown>(null);
 
   useEffect(() => {
     if (open) {
-      setForm(emptyForm(defaultType, defaultParentId, defaultSprintId));
+      setForm(emptyForm(defaultType, defaultParentId, initialSprintId));
       setSubmitError(null);
     }
-  }, [open, defaultType, defaultParentId, defaultSprintId]);
+  }, [open, defaultType, defaultParentId, initialSprintId]);
 
   const allowedParents = ALLOWED_PARENT_TYPES[form.type];
   const parentOptions = flatten(candidates).filter((node) => allowedParents.includes(node.type));
@@ -72,7 +76,7 @@ export function CreateWorkItemDialog({
       storyPoints: form.storyPoints === '' ? null : Number(form.storyPoints),
       assigneeIds: form.assigneeIds,
       status: defaultStatus,
-      sprintId: form.type === WorkItemType.EPIC ? null : form.sprintId || null,
+      sprintId: form.sprintId || null,
     };
 
     try {
@@ -116,7 +120,6 @@ export function CreateWorkItemDialog({
                   ...form,
                   type: event.target.value as WorkItemType,
                   parentId: '',
-                  sprintId: event.target.value === WorkItemType.EPIC ? '' : form.sprintId,
                 })
               }
             >
@@ -167,7 +170,16 @@ export function CreateWorkItemDialog({
             <Select
               id="new-parent"
               value={form.parentId}
-              onChange={(event) => setForm({ ...form, parentId: event.target.value })}
+              onChange={(event) => {
+                // Un enfant suit le sprint de son parent (règle appliquée côté API) :
+                // on l'affiche d'emblée pour que le formulaire reflète le résultat.
+                const parent = parentOptions.find((node) => node.id === event.target.value);
+                setForm({
+                  ...form,
+                  parentId: event.target.value,
+                  sprintId: form.sprintId || parent?.sprintId || '',
+                });
+              }}
             >
               <option value="">Aucun parent</option>
               {parentOptions.map((node) => (
@@ -203,22 +215,28 @@ export function CreateWorkItemDialog({
             </Select>
           </Field>
 
-          {form.type !== WorkItemType.EPIC && (
-            <Field label="Sprint" htmlFor="new-sprint">
-              <Select
-                id="new-sprint"
-                value={form.sprintId}
-                onChange={(event) => setForm({ ...form, sprintId: event.target.value })}
-              >
-                <option value="">Backlog (aucun sprint)</option>
-                {(sprints ?? []).map((sprint) => (
-                  <option key={sprint.id} value={sprint.id}>
-                    {sprint.name} · {LABELS_FR.sprintStatus[sprint.status]}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          )}
+          <Field
+            label="Sprint"
+            htmlFor="new-sprint"
+            hint={
+              form.type === WorkItemType.EPIC
+                ? 'Sera propagé à ses User Stories, Bugs et Sous-tâches.'
+                : undefined
+            }
+          >
+            <Select
+              id="new-sprint"
+              value={form.sprintId}
+              onChange={(event) => setForm({ ...form, sprintId: event.target.value })}
+            >
+              <option value="">Backlog (aucun sprint)</option>
+              {(sprints ?? []).map((sprint) => (
+                <option key={sprint.id} value={sprint.id}>
+                  {sprint.name} · {LABELS_FR.sprintStatus[sprint.status]}
+                </option>
+              ))}
+            </Select>
+          </Field>
         </div>
 
         <Field

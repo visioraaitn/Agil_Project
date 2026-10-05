@@ -7,8 +7,12 @@ export interface ApiErrorBody {
   /** Code applicatif stable, ex. `PROJECT_KEY_TAKEN` — le front s'y accroche. */
   code: string;
   message: string;
-  /** Erreurs de validation Zod, indexées par chemin de champ. */
-  details?: Record<string, string[]>;
+  /**
+   * Erreurs de validation Zod (indexées par chemin de champ, valeur `string[]`)
+   * ou charge utile structurée propre à un code applicatif donné — ex.
+   * `SPRINT_PROPAGATION_CONFIRMATION_REQUIRED` y place la liste des conflits.
+   */
+  details?: Record<string, unknown>;
   timestamp: string;
   path: string;
 }

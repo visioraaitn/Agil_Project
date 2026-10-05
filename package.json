@@ -25,7 +25,8 @@
     "db:studio": "pnpm --filter @visiora/api prisma:studio",
     "db:reset": "pnpm --filter @visiora/api prisma:reset",
     "db:backup": "powershell -ExecutionPolicy Bypass -File ./scripts/backup-db.ps1",
-    "db:restore": "powershell -ExecutionPolicy Bypass -File ./scripts/restore-db.ps1"
+    "db:restore": "powershell -ExecutionPolicy Bypass -File ./scripts/restore-db.ps1",
+    "db:seed:labels": "pnpm --filter @visiora/api prisma:seed:labels"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",

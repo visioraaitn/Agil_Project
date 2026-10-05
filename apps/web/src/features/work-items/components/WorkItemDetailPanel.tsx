@@ -10,6 +10,7 @@ import {
   WorkItemType,
   type AcceptanceCriterionInput,
   type BacklogNode,
+  type SprintPropagationConflict,
   type UpdateWorkItemInput,
   type WorkItemDetail,
 } from '@visiora/shared';
@@ -22,6 +23,7 @@ import { AvatarStack } from '@/components/common/AvatarStack';
 import { MarkdownEditor } from '@/components/common/MarkdownEditor';
 import { MarkdownViewer } from '@/components/common/MarkdownViewer';
 import { ErrorState, InlineError, LoadingState } from '@/components/common/StateMessage';
+import { ApiError } from '@/lib/api-client';
 import { collaborationApi } from '@/features/collaboration/api';
 import { AttachmentsPanel } from '@/features/collaboration/components/AttachmentsPanel';
 import { CommentsPanel } from '@/features/collaboration/components/CommentsPanel';
@@ -29,6 +31,7 @@ import { useProjectMembers, useProjectPermissions } from '@/features/projects/ho
 import { useSprints } from '@/features/sprints/hooks';
 import { AcceptanceCriteriaEditor } from './AcceptanceCriteriaEditor';
 import { AssigneeSelector } from './AssigneeSelector';
+import { SprintConflictDialog } from './SprintConflictDialog';
 import { StatusPill, TypeIcon } from './WorkItemChrome';
 import {
   useBacklog,
@@ -112,6 +115,7 @@ function DetailBody({
   const [labelIds, setLabelIds] = useState<string[]>(item.labels.map((label) => label.id));
   const [subtaskTitle, setSubtaskTitle] = useState('');
   const [saveError, setSaveError] = useState<unknown>(null);
+  const [sprintConflict, setSprintConflict] = useState<SprintPropagationConflict[] | null>(null);
 
   // Le panneau reste monté d'un ticket à l'autre : on resynchronise le brouillon.
   useEffect(() => {
@@ -127,7 +131,12 @@ function DetailBody({
     return `${apiBase}/projects/${projectRef}/work-items/${item.id}/attachments/${uploaded.id}/download`;
   };
 
-  const save = async () => {
+  /**
+   * Un Epic dont le sprint change peut exiger une confirmation si des
+   * descendants sont déjà dans un autre sprint (voir SPRINT_PROPAGATION_CONFIRMATION_REQUIRED,
+   * source de vérité côté backend — ce composant ne fait qu'afficher sa réponse).
+   */
+  const save = async (confirmSprintPropagation = false) => {
     setSaveError(null);
     const payload: UpdateWorkItemInput = {
       title: draft.title,
@@ -138,16 +147,24 @@ function DetailBody({
       storyPoints: draft.storyPoints === '' ? null : Number(draft.storyPoints),
       parentId: draft.parentId || null,
       assigneeIds: draft.assigneeIds,
-      sprintId: draft.sprintId || null,
+      sprintId: draft.sprintId === (item.sprintId ?? '') ? undefined : draft.sprintId || null,
       isBlocked: draft.isBlocked,
       blockedReason: draft.isBlocked ? draft.blockedReason || null : null,
       labelIds,
       acceptanceCriteria: criteria,
+      ...(confirmSprintPropagation ? { confirmSprintPropagation: true } : {}),
     };
 
     try {
       await update.mutateAsync({ itemId: item.id, input: payload });
+      setSprintConflict(null);
     } catch (error) {
+      if (error instanceof ApiError && error.code === 'SPRINT_PROPAGATION_CONFIRMATION_REQUIRED') {
+        setSprintConflict(
+          (error.details?.conflicts as SprintPropagationConflict[] | undefined) ?? [],
+        );
+        return;
+      }
       setSaveError(error);
     }
   };
@@ -312,23 +329,29 @@ function DetailBody({
             </Field>
           )}
 
-          {item.type !== WorkItemType.EPIC && (
-            <Field label="Sprint" htmlFor="wi-sprint">
-              <Select
-                id="wi-sprint"
-                value={draft.sprintId}
-                disabled={!canEdit}
-                onChange={(event) => setDraft({ ...draft, sprintId: event.target.value })}
-              >
-                <option value="">Backlog (aucun sprint)</option>
-                {(sprints ?? []).map((sprint) => (
-                  <option key={sprint.id} value={sprint.id}>
-                    {sprint.name} · {LABELS_FR.sprintStatus[sprint.status]}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          )}
+          <Field
+            label="Sprint"
+            htmlFor="wi-sprint"
+            hint={
+              item.type === WorkItemType.EPIC
+                ? 'Affecte aussi toutes les User Stories, Bugs et Sous-tâches de cet Epic.'
+                : undefined
+            }
+          >
+            <Select
+              id="wi-sprint"
+              value={draft.sprintId}
+              disabled={!canEdit}
+              onChange={(event) => setDraft({ ...draft, sprintId: event.target.value })}
+            >
+              <option value="">Backlog (aucun sprint)</option>
+              {(sprints ?? []).map((sprint) => (
+                <option key={sprint.id} value={sprint.id}>
+                  {sprint.name} · {LABELS_FR.sprintStatus[sprint.status]}
+                </option>
+              ))}
+            </Select>
+          </Field>
         </div>
 
         <details className="group border-border-default overflow-hidden rounded border" open>
@@ -516,12 +539,27 @@ function DetailBody({
         <div className="ml-auto flex gap-2">
           <Button onClick={onClose}>Fermer</Button>
           {canEdit && (
-            <Button variant="primary" onClick={save} loading={update.isPending}>
+            <Button variant="primary" onClick={() => void save()} loading={update.isPending}>
               Enregistrer
             </Button>
           )}
         </div>
       </footer>
+
+      <SprintConflictDialog
+        open={sprintConflict !== null}
+        conflicts={sprintConflict ?? []}
+        targetSprintName={
+          sprints?.find((sprint) => sprint.id === draft.sprintId)?.name ?? 'Backlog'
+        }
+        onCancel={() => {
+          // Rien n'a été enregistré : le sélecteur revient au sprint réellement en base.
+          setSprintConflict(null);
+          setDraft((current) => ({ ...current, sprintId: item.sprintId ?? '' }));
+        }}
+        onConfirm={() => void save(true)}
+        confirming={update.isPending}
+      />
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { SprintStatus, WorkItemStatus } from '@visiora/shared';
+import { SprintStatus, UnfinishedItemsAction, WorkItemStatus } from '@visiora/shared';
 import { SprintsService } from './sprints.service';
 
 describe('SprintsService.update', () => {
@@ -83,14 +83,14 @@ describe('SprintsService.close', () => {
     );
   });
 
-  it('refuse de cloturer sans sprint cible quand des elements ne sont pas termines', async () => {
+  it('refuse de cloturer sans choix explicite quand des elements ne sont pas termines', async () => {
     const { service, tx } = buildService({
       sprintFindFirstResults: [{ id: SPRINT_ID, status: SprintStatus.ACTIVE }],
       items: [{ id: 'item-1', storyPoints: 5, status: WorkItemStatus.TODO }],
     });
 
     await expect(service.close(PROJECT_ID, SPRINT_ID, {})).rejects.toMatchObject({
-      response: { code: 'TARGET_SPRINT_REQUIRED' },
+      response: { code: 'UNFINISHED_ITEMS_ACTION_REQUIRED' },
     });
     expect(tx.sprint.update).not.toHaveBeenCalled();
   });
@@ -109,7 +109,10 @@ describe('SprintsService.close', () => {
       ],
     });
 
-    await service.close(PROJECT_ID, SPRINT_ID, { targetSprintId: TARGET_ID });
+    await service.close(PROJECT_ID, SPRINT_ID, {
+      unfinishedItemsAction: UnfinishedItemsAction.MOVE_TO_SPRINT,
+      targetSprintId: TARGET_ID,
+    });
 
     expect(tx.workItem.updateMany).toHaveBeenCalledWith({
       where: { id: { in: ['bug-open', 'subtask-open'] } },
@@ -120,6 +123,25 @@ describe('SprintsService.close', () => {
         data: expect.objectContaining({ committedPoints: 7, completedPoints: 5 }),
       }),
     );
+  });
+
+  it('remet les elements non termines au backlog (sprintId null) sans toucher parentId', async () => {
+    const { service, tx } = buildService({
+      sprintFindFirstResults: [{ id: SPRINT_ID, status: SprintStatus.ACTIVE }],
+      items: [
+        { id: 'epic-open', storyPoints: null, status: WorkItemStatus.IN_PROGRESS },
+        { id: 'story-done', storyPoints: 5, status: WorkItemStatus.DONE },
+      ],
+    });
+
+    await service.close(PROJECT_ID, SPRINT_ID, {
+      unfinishedItemsAction: UnfinishedItemsAction.BACKLOG,
+    });
+
+    expect(tx.workItem.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['epic-open'] } },
+      data: { sprintId: null },
+    });
   });
 
   it('refuse un sprint cible identique au sprint cloture', async () => {

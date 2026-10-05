@@ -6,6 +6,7 @@ import {
   RoadmapEpic,
   SprintDetail,
   SprintStatus,
+  UnfinishedItemsAction,
   UpdateRetrospectiveInput,
   UpdateSprintInput,
   WorkItemStatus,
@@ -156,17 +157,24 @@ export class SprintsService {
         0,
       );
 
-      if (unfinished.length > 0 && !input.targetSprintId) {
+      if (unfinished.length > 0 && !input.unfinishedItemsAction) {
         throw new BadRequestException({
-          code: 'TARGET_SPRINT_REQUIRED',
-          message: 'Choisissez un sprint de destination pour les elements non termines',
+          code: 'UNFINISHED_ITEMS_ACTION_REQUIRED',
+          message:
+            'Choisissez quoi faire des elements non termines : les deplacer vers un sprint ou les remettre au backlog',
         });
       }
 
-      if (unfinished.length > 0 && input.targetSprintId) {
+      if (unfinished.length > 0 && input.unfinishedItemsAction === UnfinishedItemsAction.MOVE_TO_SPRINT) {
         await tx.workItem.updateMany({
           where: { id: { in: unfinished.map((item) => item.id) } },
           data: { sprintId: input.targetSprintId },
+        });
+      } else if (unfinished.length > 0 && input.unfinishedItemsAction === UnfinishedItemsAction.BACKLOG) {
+        // Ne touche jamais parentId : seule l'affectation au sprint change, la hiérarchie reste intacte.
+        await tx.workItem.updateMany({
+          where: { id: { in: unfinished.map((item) => item.id) } },
+          data: { sprintId: null },
         });
       }
 

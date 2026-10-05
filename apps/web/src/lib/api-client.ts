@@ -10,7 +10,12 @@ export class ApiError extends Error {
     readonly status: number,
     readonly code: string,
     message: string,
-    readonly details?: Record<string, string[]>,
+    /**
+     * Erreurs de validation Zod (`string[]` par champ) ou charge structurée
+     * propre à un code applicatif (ex. `conflicts` pour
+     * SPRINT_PROPAGATION_CONFIRMATION_REQUIRED) — voir ApiErrorBody.
+     */
+    readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -20,7 +25,9 @@ export class ApiError extends Error {
   get fieldErrors(): Record<string, string> {
     if (!this.details) return {};
     return Object.fromEntries(
-      Object.entries(this.details).map(([field, messages]) => [field, messages[0] ?? '']),
+      Object.entries(this.details)
+        .filter((entry): entry is [string, string[]] => Array.isArray(entry[1]))
+        .map(([field, messages]) => [field, messages[0] ?? '']),
     );
   }
 }

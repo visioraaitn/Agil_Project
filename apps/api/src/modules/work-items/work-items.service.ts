@@ -18,13 +18,16 @@ import {
 } from '@visiora/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RankingService } from './ranking.service';
+import { renumberSiblings } from './work-item-numbering';
 import {
   ChildAggregate,
   WORK_ITEM_DETAIL_SELECT,
+  WORK_ITEM_KEY_SELECT,
   WORK_ITEM_SUMMARY_SELECT,
   WorkItemSummaryRow,
   toWorkItemDetail,
   toWorkItemSummary,
+  workItemKey,
 } from './work-item.mapper';
 
 @Injectable()
@@ -133,6 +136,7 @@ export class WorkItemsService {
     await this.assertHierarchy(projectId, input.type, input.parentId ?? null);
     const assigneeIds = resolveAssigneeIds(input) ?? [];
     await this.assertReferences(projectId, assigneeIds, input.sprintId, input.labelIds);
+    const sprintId = await this.inheritSprintId(input.parentId ?? null, input.sprintId);
 
     const targetStatus = input.status ?? WorkItemStatus.TODO;
 
@@ -144,6 +148,7 @@ export class WorkItemsService {
 
     /** Le numero est alloue dans la portee type/parent avec protection concurrente. */
     const created = await this.numberedTransaction(async (tx) => {
+      await renumberSiblings(tx, projectId, input.type, input.parentId ?? null);
       const number = await this.nextAvailableNumber(
         tx,
         projectId,
@@ -163,7 +168,7 @@ export class WorkItemsService {
           storyPoints: input.storyPoints ?? null,
           parentId: input.parentId ?? null,
           assigneeId: assigneeIds[0] ?? null,
-          sprintId: input.sprintId ?? null,
+          sprintId,
           startDate: input.startDate ?? null,
           dueDate: input.dueDate ?? null,
           reporterId,
@@ -191,7 +196,7 @@ export class WorkItemsService {
   ): Promise<WorkItemDetail> {
     const existing = await this.prisma.workItem.findFirst({
       where: { id: itemId, projectId, deletedAt: null },
-      select: { id: true, type: true, status: true, parentId: true },
+      select: { id: true, type: true, status: true, parentId: true, sprintId: true },
     });
     if (!existing) throw this.notFound();
 
@@ -205,6 +210,21 @@ export class WorkItemsService {
     const assigneeIds = resolveAssigneeIds(input);
     await this.assertReferences(projectId, assigneeIds, input.sprintId, input.labelIds);
 
+    // C.1 · Un Epic propage son sprint à ses descendants — jamais silencieusement
+    // si certains sont déjà affectés ailleurs (voir assertNoSprintConflict).
+    const changesEpicSprint =
+      existing.type === WorkItemType.EPIC &&
+      input.sprintId !== undefined &&
+      input.sprintId !== existing.sprintId;
+
+    // C.1 · Rattaché à un parent planifié, un ticket resté sans sprint suit ce
+    // sprint. Un sprint déjà choisi n'est jamais écrasé (pas de déplacement silencieux).
+    const requestedSprintId = input.sprintId !== undefined ? input.sprintId : existing.sprintId;
+    const inheritedSprintId =
+      changesParent && !requestedSprintId && input.sprintId === undefined
+        ? await this.inheritSprintId(targetParentId, undefined)
+        : null;
+
     const closesNow =
       input.status === WorkItemStatus.DONE && existing.status !== WorkItemStatus.DONE;
     const reopens = input.status !== undefined && input.status !== WorkItemStatus.DONE;
@@ -213,6 +233,15 @@ export class WorkItemsService {
       : undefined;
 
     const updateInTransaction = async (tx: Prisma.TransactionClient) => {
+      if (changesEpicSprint) {
+        await this.assertNoSprintConflict(
+          tx,
+          itemId,
+          input.sprintId ?? null,
+          input.confirmSprintPropagation ?? false,
+        );
+      }
+
       const number = changesParent
         ? await this.nextAvailableNumber(
             tx,
@@ -246,13 +275,27 @@ export class WorkItemsService {
                 rank: targetRank,
               }
             : {}),
+          ...(inheritedSprintId ? { sprintId: inheritedSprintId } : {}),
           ...(closesNow ? { closedAt: new Date() } : {}),
           ...(reopens ? { closedAt: null } : {}),
         },
       });
 
+      if (changesParent) {
+        await renumberSiblings(tx, projectId, existing.type, existing.parentId);
+        await renumberSiblings(tx, projectId, existing.type, targetParentId);
+      }
+
       if (closesNow) {
         await this.cascadeCloseDescendants(tx, itemId);
+      }
+
+      if (changesEpicSprint) {
+        await this.cascadeSprintToDescendants(tx, itemId, input.sprintId ?? null);
+      }
+
+      if (inheritedSprintId) {
+        await this.fillSprintOnUnplannedDescendants(tx, itemId, inheritedSprintId);
       }
 
       // Les étiquettes sont remplacées en bloc : le client envoie l'état voulu.
@@ -311,9 +354,15 @@ export class WorkItemsService {
   ): Promise<WorkItemSummary> {
     const item = await this.prisma.workItem.findFirst({
       where: { id: itemId, projectId, deletedAt: null },
-      select: { id: true, type: true, status: true, parentId: true },
+      select: { id: true, type: true, status: true, parentId: true, sprintId: true },
     });
     if (!item) throw this.notFound();
+
+    await this.assertReferences(projectId, undefined, input.sprintId);
+    const changesEpicSprint =
+      item.type === WorkItemType.EPIC &&
+      input.sprintId !== undefined &&
+      input.sprintId !== item.sprintId;
 
     const parentProvided = input.parentId !== undefined;
     const targetParentId = parentProvided ? (input.parentId ?? null) : item.parentId;
@@ -328,7 +377,7 @@ export class WorkItemsService {
     let closesNow = false;
 
     // Déplacement de colonne : on recalcule le rang board.
-    if (input.status !== undefined || input.beforeId || input.afterId) {
+    if (input.status !== undefined || input.beforeId !== undefined || input.afterId !== undefined) {
       const targetStatus = input.status ?? (item.status as WorkItemStatus);
       const isBoardMove = input.status !== undefined;
 
@@ -366,22 +415,42 @@ export class WorkItemsService {
       data.sprint = input.sprintId ? { connect: { id: input.sprintId } } : { disconnect: true };
     }
 
-    if (changesParent) {
-      await this.numberedTransaction(async (tx) => {
-        const number = await this.nextAvailableNumber(
+    const inheritedSprintId =
+      changesParent && input.sprintId === undefined && !item.sprintId
+        ? await this.inheritSprintId(targetParentId, undefined)
+        : null;
+    if (inheritedSprintId) data.sprint = { connect: { id: inheritedSprintId } };
+
+    const applyMove = async (tx: Prisma.TransactionClient) => {
+      if (changesEpicSprint) {
+        await this.assertNoSprintConflict(
           tx,
-          projectId,
-          item.type as WorkItemType,
-          targetParentId,
+          itemId,
+          input.sprintId ?? null,
+          input.confirmSprintPropagation ?? false,
         );
-        await tx.workItem.update({ where: { id: itemId }, data: { ...data, number } });
-        if (closesNow) await this.cascadeCloseDescendants(tx, itemId);
+      }
+      const number = changesParent
+        ? await this.nextAvailableNumber(tx, projectId, item.type as WorkItemType, targetParentId)
+        : undefined;
+      await tx.workItem.update({
+        where: { id: itemId },
+        data: { ...data, ...(changesParent ? { number } : {}) },
       });
-    } else if (closesNow) {
-      await this.prisma.$transaction(async (tx) => {
-        await tx.workItem.update({ where: { id: itemId }, data });
-        await this.cascadeCloseDescendants(tx, itemId);
-      });
+      if (changesParent) await renumberSiblings(tx, projectId, item.type, item.parentId);
+      if (changesParent || data.rank !== undefined) {
+        await renumberSiblings(tx, projectId, item.type, targetParentId);
+      }
+      if (closesNow) await this.cascadeCloseDescendants(tx, itemId);
+      if (changesEpicSprint)
+        await this.cascadeSprintToDescendants(tx, itemId, input.sprintId ?? null);
+      if (inheritedSprintId)
+        await this.fillSprintOnUnplannedDescendants(tx, itemId, inheritedSprintId);
+    };
+    if (changesParent || data.rank !== undefined) {
+      await this.numberedTransaction(applyMove);
+    } else if (closesNow || changesEpicSprint) {
+      await this.prisma.$transaction(applyMove);
     } else {
       await this.prisma.workItem.update({ where: { id: itemId }, data });
     }
@@ -397,14 +466,17 @@ export class WorkItemsService {
   async softDelete(projectId: string, itemId: string): Promise<void> {
     const item = await this.prisma.workItem.findFirst({
       where: { id: itemId, projectId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, type: true, parentId: true },
     });
     if (!item) throw this.notFound();
 
-    const ids = await this.collectDescendants(itemId);
-    await this.prisma.workItem.updateMany({
-      where: { id: { in: ids } },
-      data: { deletedAt: new Date() },
+    await this.numberedTransaction(async (tx) => {
+      const ids = await this.collectDescendants(itemId, tx);
+      await tx.workItem.updateMany({
+        where: { id: { in: ids } },
+        data: { deletedAt: new Date() },
+      });
+      await renumberSiblings(tx, projectId, item.type, item.parentId);
     });
   }
 
@@ -453,7 +525,7 @@ export class WorkItemsService {
     const field = filters.sortBy;
     const stableColumn = view === 'backlog' ? 'rank' : 'boardRank';
 
-    if (!field) return [{ [stableColumn]: 'asc' }];
+    if (!field) return [{ [stableColumn]: 'asc' }, { id: 'asc' }];
 
     const column = field === WorkItemSortBy.KEY ? 'number' : field;
     return [{ [column]: direction }, { [stableColumn]: 'asc' }];
@@ -603,14 +675,110 @@ export class WorkItemsService {
     tx: Prisma.TransactionClient,
     itemId: string,
   ): Promise<void> {
-    const descendantIds = (await this.collectDescendants(itemId, tx)).filter(
-      (id) => id !== itemId,
-    );
+    const descendantIds = (await this.collectDescendants(itemId, tx)).filter((id) => id !== itemId);
     if (descendantIds.length === 0) return;
 
     await tx.workItem.updateMany({
       where: { id: { in: descendantIds }, status: { not: WorkItemStatus.DONE } },
       data: { status: WorkItemStatus.DONE, closedAt: new Date() },
+    });
+  }
+
+  /**
+   * C.1 · Refuse une propagation Epic → Sprint silencieuse : si des
+   * descendants sont déjà affectés à un AUTRE sprint que la cible, la requête
+   * échoue avec la liste des conflits tant que le client n'a pas confirmé.
+   * Rien n'est modifié dans ce cas (le throw annule toute la transaction).
+   */
+  private async assertNoSprintConflict(
+    tx: Prisma.TransactionClient,
+    itemId: string,
+    targetSprintId: string | null,
+    confirmed: boolean,
+  ): Promise<void> {
+    if (confirmed) return;
+
+    const descendantIds = (await this.collectDescendants(itemId, tx)).filter((id) => id !== itemId);
+    if (descendantIds.length === 0) return;
+
+    const descendants = await tx.workItem.findMany({
+      where: { id: { in: descendantIds }, deletedAt: null },
+      select: {
+        id: true,
+        title: true,
+        sprintId: true,
+        sprint: { select: { name: true } },
+        ...WORK_ITEM_KEY_SELECT,
+        project: { select: { key: true } },
+      },
+    });
+
+    const conflicts = descendants.filter(
+      (descendant) => descendant.sprintId !== null && descendant.sprintId !== targetSprintId,
+    );
+    if (conflicts.length === 0) return;
+
+    throw new BadRequestException({
+      code: 'SPRINT_PROPAGATION_CONFIRMATION_REQUIRED',
+      message:
+        'Des éléments de cet Epic sont déjà affectés à un autre sprint — confirmez le déplacement',
+      details: {
+        conflicts: conflicts.map((descendant) => ({
+          id: descendant.id,
+          key: workItemKey(descendant.project.key, descendant),
+          title: descendant.title,
+          type: descendant.type as WorkItemType,
+          currentSprintId: descendant.sprintId as string,
+          currentSprintName: descendant.sprint?.name ?? '',
+        })),
+      },
+    });
+  }
+
+  /**
+   * C.1 · Sprint effectif d'un ticket : celui demandé explicitement, sinon
+   * celui de son parent direct. Un enfant créé sous un Epic déjà planifié
+   * rejoint donc son sprint au lieu de rester au backlog.
+   */
+  private async inheritSprintId(
+    parentId: string | null,
+    requestedSprintId: string | null | undefined,
+  ): Promise<string | null> {
+    if (requestedSprintId !== undefined || !parentId) return requestedSprintId ?? null;
+    const parent = await this.prisma.workItem.findUnique({
+      where: { id: parentId },
+      select: { sprintId: true },
+    });
+    return parent?.sprintId ?? null;
+  }
+
+  /** Complète le sprint des descendants qui n'en ont pas, sans écraser un choix existant. */
+  private async fillSprintOnUnplannedDescendants(
+    tx: Prisma.TransactionClient,
+    itemId: string,
+    sprintId: string,
+  ): Promise<void> {
+    const descendantIds = (await this.collectDescendants(itemId, tx)).filter((id) => id !== itemId);
+    if (descendantIds.length === 0) return;
+
+    await tx.workItem.updateMany({
+      where: { id: { in: descendantIds }, sprintId: null },
+      data: { sprintId },
+    });
+  }
+
+  /** C.1 · Applique le sprint de l'Epic à tous ses descendants, dans la même transaction. */
+  private async cascadeSprintToDescendants(
+    tx: Prisma.TransactionClient,
+    itemId: string,
+    sprintId: string | null,
+  ): Promise<void> {
+    const descendantIds = (await this.collectDescendants(itemId, tx)).filter((id) => id !== itemId);
+    if (descendantIds.length === 0) return;
+
+    await tx.workItem.updateMany({
+      where: { id: { in: descendantIds } },
+      data: { sprintId },
     });
   }
 

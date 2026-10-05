@@ -49,11 +49,25 @@ export const updateRetrospectiveSchema = z.object({
 });
 export type UpdateRetrospectiveInput = z.infer<typeof updateRetrospectiveSchema>;
 
-export const closeSprintSchema = z.object({
-  retroSummary: z.string().trim().max(5000).nullable().optional(),
-  /** Sprint destination pour les elements non termines ; requis si le sprint en a. */
-  targetSprintId: uuidSchema.nullable().optional(),
-});
+export const UnfinishedItemsAction = {
+  MOVE_TO_SPRINT: 'MOVE_TO_SPRINT',
+  BACKLOG: 'BACKLOG',
+} as const;
+export type UnfinishedItemsAction =
+  (typeof UnfinishedItemsAction)[keyof typeof UnfinishedItemsAction];
+
+export const closeSprintSchema = z
+  .object({
+    retroSummary: z.string().trim().max(5000).nullable().optional(),
+    /** Choix explicite requis dès lors que le sprint contient des elements non termines. */
+    unfinishedItemsAction: z.nativeEnum(UnfinishedItemsAction).optional(),
+    /** Sprint destination ; requis si unfinishedItemsAction === MOVE_TO_SPRINT. */
+    targetSprintId: uuidSchema.nullable().optional(),
+  })
+  .refine(
+    (value) => value.unfinishedItemsAction !== UnfinishedItemsAction.MOVE_TO_SPRINT || Boolean(value.targetSprintId),
+    { message: 'Choisissez le sprint de destination', path: ['targetSprintId'] },
+  );
 export type CloseSprintInput = z.infer<typeof closeSprintSchema>;
 
 export interface RetrospectiveItemSummary {

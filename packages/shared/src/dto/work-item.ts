@@ -76,9 +76,25 @@ export const updateWorkItemSchema = z
     blockedReason: z.string().max(500).nullable().optional(),
     /** Remplace l'intégralité de la liste des critères d'acceptation. */
     acceptanceCriteria: z.array(acceptanceCriterionSchema).max(50).optional(),
+    /**
+     * C.1 · Confirme explicitement la propagation d'un changement de sprint
+     * d'un Epic vers des descendants déjà affectés à un autre sprint — sans
+     * quoi la requête est rejetée avec la liste des conflits à confirmer.
+     */
+    confirmSprintPropagation: z.boolean().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, { message: 'Aucun champ à mettre à jour' });
 export type UpdateWorkItemInput = z.infer<typeof updateWorkItemSchema>;
+
+/** Descendant d'un Epic déjà affecté à un autre sprint, renvoyé lors d'un conflit. */
+export interface SprintPropagationConflict {
+  id: string;
+  key: string;
+  title: string;
+  type: WorkItemType;
+  currentSprintId: string;
+  currentSprintName: string;
+}
 
 /**
  * Déplacement unique pour le board ET le backlog.
@@ -89,6 +105,7 @@ export type UpdateWorkItemInput = z.infer<typeof updateWorkItemSchema>;
  * absents = placement en fin de liste.
  */
 export const moveWorkItemSchema = z.object({
+  confirmSprintPropagation: z.boolean().optional(),
   status: z.nativeEnum(WorkItemStatus).optional(),
   parentId: uuidSchema.nullable().optional(),
   sprintId: uuidSchema.nullable().optional(),

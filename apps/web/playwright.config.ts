@@ -1,9 +1,16 @@
 import { defineConfig, devices } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadEnv } from 'vite';
 
 const webDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(webDir, '../..');
+const env = loadEnv('test', repoRoot, '');
+const apiUrl = process.env.E2E_API_URL ?? env.VITE_API_URL ?? 'http://localhost:3000/api/v1';
+process.env.E2E_API_URL = apiUrl;
+process.env.E2E_ADMIN_EMAIL ??= env.ADMIN_SEED_EMAIL;
+process.env.E2E_ADMIN_PASSWORD ??= env.ADMIN_SEED_PASSWORD;
+process.env.DATABASE_URL ??= env.DATABASE_URL;
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -19,7 +26,7 @@ export default defineConfig({
     {
       command: 'pnpm --filter @visiora/api start',
       cwd: repoRoot,
-      url: 'http://localhost:3000/api/v1/health',
+      url: `${apiUrl}/health`,
       reuseExistingServer: true,
       timeout: 30_000,
     },

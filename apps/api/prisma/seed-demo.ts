@@ -21,6 +21,7 @@ import {
   EntityType,
 } from '@prisma/client';
 import { hashSync } from 'bcryptjs';
+import { seedProjectLabels } from './default-labels';
 
 const prisma = new PrismaClient();
 const DEMO_PASSWORD = process.env.DEMO_SEED_PASSWORD;
@@ -244,22 +245,9 @@ async function main(): Promise<void> {
   // =========================================================================
   // 4. ÉTIQUETTES (Labels par projet)
   // =========================================================================
-  const labelData = [
-    { name: 'bug', color: '#D13438' },
-    { name: 'amélioration', color: '#107C10' },
-    { name: 'technique', color: '#605E5C' },
-    { name: 'urgent', color: '#CA5010' },
-    { name: 'frontend', color: '#0078D4' },
-    { name: 'backend', color: '#8764B8' },
-    { name: 'sécurité', color: '#A4262C' },
-  ];
-
   const labelsMap: Record<string, string> = {};
-  for (const l of labelData) {
-    const created = await prisma.label.create({
-      data: { projectId: pVis.id, name: l.name, color: l.color },
-    });
-    labelsMap[l.name] = created.id;
+  for (const label of await seedProjectLabels(prisma, pVis.id)) {
+    labelsMap[label.name] = label.id;
   }
 
   // =========================================================================
@@ -507,6 +495,8 @@ async function main(): Promise<void> {
     },
   });
 
+  // Affecté au Sprint 3 alors que sa Story (stRBAC, plus bas) reste au Sprint 2 :
+  // scénario prêt à l'emploi pour tester la confirmation de conflit Epic → Sprint.
   const epicGit = await prisma.workItem.create({
     data: {
       projectId: pVis.id,
@@ -521,6 +511,7 @@ async function main(): Promise<void> {
       dueDate: new Date('2026-09-12'),
       rank: rankAt(3),
       boardRank: rankAt(3),
+      sprintId: sprint3.id,
       reporterId: users['po@visiora.ai'].id,
     },
   });
@@ -566,7 +557,7 @@ async function main(): Promise<void> {
       rank: rankAt(5),
       boardRank: rankAt(5),
       closedAt: new Date('2026-08-10T15:00:00Z'),
-      labels: { create: [{ labelId: labelsMap['frontend'] }, { labelId: labelsMap['sécurité'] }] },
+      labels: { create: [{ labelId: labelsMap['Frontend'] }, { labelId: labelsMap['Backend'] }] },
     },
   });
 
@@ -649,7 +640,7 @@ async function main(): Promise<void> {
       reporterId: users['po@visiora.ai'].id,
       rank: rankAt(8),
       boardRank: rankAt(8),
-      labels: { create: [{ labelId: labelsMap['backend'] }, { labelId: labelsMap['urgent'] }] },
+      labels: { create: [{ labelId: labelsMap['Backend'] }] },
     },
   });
 
@@ -697,7 +688,7 @@ async function main(): Promise<void> {
       rank: rankAt(9),
       boardRank: rankAt(9),
       labels: {
-        create: [{ labelId: labelsMap['frontend'] }, { labelId: labelsMap['amélioration'] }],
+        create: [{ labelId: labelsMap['Frontend'] }],
       },
     },
   });
@@ -756,7 +747,7 @@ async function main(): Promise<void> {
       reporterId: users['sm@visiora.ai'].id,
       rank: rankAt(12),
       boardRank: rankAt(12),
-      labels: { create: [{ labelId: labelsMap['frontend'] }] },
+      labels: { create: [{ labelId: labelsMap['Frontend'] }] },
     },
   });
 
@@ -778,7 +769,7 @@ async function main(): Promise<void> {
       reporterId: users['po@visiora.ai'].id,
       rank: rankAt(13),
       boardRank: rankAt(13),
-      labels: { create: [{ labelId: labelsMap['backend'] }, { labelId: labelsMap['technique'] }] },
+      labels: { create: [{ labelId: labelsMap['Backend'] }, { labelId: labelsMap['DevOps'] }] },
     },
   });
 
@@ -802,7 +793,7 @@ async function main(): Promise<void> {
       reporterId: users['sm@visiora.ai'].id,
       rank: rankAt(14),
       boardRank: rankAt(14),
-      labels: { create: [{ labelId: labelsMap['bug'] }, { labelId: labelsMap['urgent'] }] },
+      labels: { create: [{ labelId: labelsMap['Backend'] }] },
     },
   });
 
@@ -823,7 +814,7 @@ async function main(): Promise<void> {
       reporterId: users['dev2@visiora.ai'].id,
       rank: rankAt(15),
       boardRank: rankAt(15),
-      labels: { create: [{ labelId: labelsMap['bug'] }] },
+      labels: { create: [{ labelId: labelsMap['Backend'] }] },
     },
   });
 
