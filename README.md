@@ -3,7 +3,7 @@
 Plateforme interne de gestion de projets agile — inspirée d'Azure DevOps.
 Périmètre fonctionnel : `Cahier_des_Charges_Fonctionnel.pdf`.
 Architecture, décisions et plan de livraison : [`docs/01-architecture-et-plan.md`](docs/01-architecture-et-plan.md).
-
+aaaaaaacf
 ## Prérequis
 
 - Node.js ≥ 20.11
