@@ -22,6 +22,7 @@ import {
 } from '@prisma/client';
 import { hashSync } from 'bcryptjs';
 import { seedProjectLabels } from './default-labels';
+import { seedProjectTags } from './default-tags';
 
 const prisma = new PrismaClient();
 const DEMO_PASSWORD = process.env.DEMO_SEED_PASSWORD;
@@ -243,8 +244,13 @@ async function main(): Promise<void> {
   }
 
   // =========================================================================
-  // 4. ÉTIQUETTES (Labels par projet)
+  // 4. TAGS ET ÉTIQUETTES (Tags et Labels par projet)
   // =========================================================================
+  const tagsMap: Record<string, string> = {};
+  for (const tag of await seedProjectTags(prisma, pVis.id)) {
+    tagsMap[tag.name] = tag.id;
+  }
+
   const labelsMap: Record<string, string> = {};
   for (const label of await seedProjectLabels(prisma, pVis.id)) {
     labelsMap[label.name] = label.id;
@@ -557,7 +563,8 @@ async function main(): Promise<void> {
       rank: rankAt(5),
       boardRank: rankAt(5),
       closedAt: new Date('2026-08-10T15:00:00Z'),
-      labels: { create: [{ labelId: labelsMap['Frontend'] }, { labelId: labelsMap['Backend'] }] },
+      tags: { create: [{ tagId: tagsMap['Frontend'] }, { tagId: tagsMap['Backend'] }] },
+      labels: { create: [{ labelId: labelsMap['Lot 1'] }] },
     },
   });
 
@@ -640,7 +647,8 @@ async function main(): Promise<void> {
       reporterId: users['po@visiora.ai'].id,
       rank: rankAt(8),
       boardRank: rankAt(8),
-      labels: { create: [{ labelId: labelsMap['Backend'] }] },
+      tags: { create: [{ tagId: tagsMap['Backend'] }] },
+      labels: { create: [{ labelId: labelsMap['Devis'] }] },
     },
   });
 
@@ -687,8 +695,11 @@ async function main(): Promise<void> {
       reporterId: users['po@visiora.ai'].id,
       rank: rankAt(9),
       boardRank: rankAt(9),
+      tags: {
+        create: [{ tagId: tagsMap['Frontend'] }],
+      },
       labels: {
-        create: [{ labelId: labelsMap['Frontend'] }],
+        create: [{ labelId: labelsMap['Lot 2'] }],
       },
     },
   });
@@ -709,6 +720,9 @@ async function main(): Promise<void> {
       rank: rankAt(10),
       boardRank: rankAt(10),
       closedAt: new Date('2026-08-17T11:00:00Z'),
+      tags: {
+        create: [{ tagId: tagsMap['Frontend'] }],
+      },
     },
   });
 
@@ -726,6 +740,9 @@ async function main(): Promise<void> {
       reporterId: users['dev1@visiora.ai'].id,
       rank: rankAt(11),
       boardRank: rankAt(11),
+      tags: {
+        create: [{ tagId: tagsMap['Frontend'] }],
+      },
     },
   });
 
@@ -747,7 +764,8 @@ async function main(): Promise<void> {
       reporterId: users['sm@visiora.ai'].id,
       rank: rankAt(12),
       boardRank: rankAt(12),
-      labels: { create: [{ labelId: labelsMap['Frontend'] }] },
+      tags: { create: [{ tagId: tagsMap['Frontend'] }] },
+      labels: { create: [{ labelId: labelsMap['À valider'] }] },
     },
   });
 
@@ -769,7 +787,8 @@ async function main(): Promise<void> {
       reporterId: users['po@visiora.ai'].id,
       rank: rankAt(13),
       boardRank: rankAt(13),
-      labels: { create: [{ labelId: labelsMap['Backend'] }, { labelId: labelsMap['DevOps'] }] },
+      tags: { create: [{ tagId: tagsMap['Backend'] }, { tagId: tagsMap['DevOps'] }] },
+      labels: { create: [{ labelId: labelsMap['Lot 3'] }] },
     },
   });
 
@@ -793,7 +812,8 @@ async function main(): Promise<void> {
       reporterId: users['sm@visiora.ai'].id,
       rank: rankAt(14),
       boardRank: rankAt(14),
-      labels: { create: [{ labelId: labelsMap['Backend'] }] },
+      tags: { create: [{ tagId: tagsMap['Backend'] }] },
+      labels: { create: [{ labelId: labelsMap['À valider'] }] },
     },
   });
 
@@ -814,7 +834,8 @@ async function main(): Promise<void> {
       reporterId: users['dev2@visiora.ai'].id,
       rank: rankAt(15),
       boardRank: rankAt(15),
-      labels: { create: [{ labelId: labelsMap['Backend'] }] },
+      tags: { create: [{ tagId: tagsMap['Backend'] }] },
+      labels: { create: [{ labelId: labelsMap['Mixte'] }] },
     },
   });
 

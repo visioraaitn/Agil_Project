@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import type {
   AcceptanceCriterionSummary,
   LabelSummary,
+  TagSummary,
   Priority,
   WorkItemDetail,
   WorkItemStatus,
@@ -49,6 +50,7 @@ export const WORK_ITEM_SUMMARY_SELECT = {
   },
   reporter: { select: { id: true, name: true, email: true, avatarUrl: true } },
   labels: { select: { label: { select: { id: true, name: true, color: true } } } },
+  tags: { select: { tag: { select: { id: true, name: true, color: true } } } },
   project: { select: { key: true } },
 } satisfies Prisma.WorkItemSelect;
 
@@ -118,8 +120,12 @@ export function workItemKey(projectKey: string, item: WorkItemKeyNode): string {
   return `${projectKey}-${parts.join('-')}`;
 }
 
-function toLabels(row: { labels: { label: LabelSummary }[] }): LabelSummary[] {
-  return row.labels.map((entry) => entry.label);
+function toLabels(row: { labels?: { label: LabelSummary }[] }): LabelSummary[] {
+  return row.labels?.map((entry) => entry.label) ?? [];
+}
+
+function toTags(row: { tags?: { tag: TagSummary }[] }): TagSummary[] {
+  return row.tags?.map((entry) => entry.tag) ?? [];
 }
 
 export function toWorkItemSummary(
@@ -152,6 +158,7 @@ export function toWorkItemSummary(
           : [],
     reporter: row.reporter,
     labels: toLabels(row),
+    tags: toTags(row),
     childCount: aggregate.childCount,
     doneChildCount: aggregate.doneChildCount,
     /**

@@ -23,6 +23,7 @@ function node(overrides: Partial<BacklogNode> & Pick<BacklogNode, 'id' | 'key' |
     assignees: [],
     reporter: REPORTER,
     labels: [],
+    tags: [],
     childCount: 0,
     doneChildCount: 0,
     rolledUpPoints: 0,

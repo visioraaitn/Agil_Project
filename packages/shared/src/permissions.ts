@@ -24,6 +24,7 @@ export const PERMISSIONS = [
   'branch:create',
   'branch:delete',
   'label:manage',
+  'tag:manage',
 
   // Backlog & tickets
   'workitem:create',
@@ -62,6 +63,7 @@ const PROJECT_LEAD_PERMISSIONS: readonly Permission[] = [
   'branch:create',
   'branch:delete',
   'label:manage',
+  'tag:manage',
   'workitem:create',
   'workitem:update',
   'workitem:delete',
@@ -86,6 +88,8 @@ const PROJECT_LEAD_PERMISSIONS: readonly Permission[] = [
 const MEMBER_PERMISSIONS: readonly Permission[] = [
   'branch:create',
   'branch:delete',
+  'label:manage',
+  'tag:manage',
   'workitem:create',
   'workitem:update',
   'workitem:assign',

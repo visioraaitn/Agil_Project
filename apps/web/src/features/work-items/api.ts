@@ -2,9 +2,13 @@ import type {
   BacklogNode,
   BoardColumn,
   CreateLabelInput,
+  CreateTagInput,
   CreateWorkItemInput,
   LabelSummary,
   MoveWorkItemInput,
+  TagSummary,
+  UpdateLabelInput,
+  UpdateTagInput,
   UpdateWorkItemInput,
   WorkItemDetail,
   WorkItemFilters,
@@ -21,6 +25,7 @@ function toQuery(filters: WorkItemFilters): Record<string, string | undefined> {
     creatorId: filters.creatorId,
     sprintId: filters.sprintId,
     labelId: filters.labelId,
+    tagId: filters.tagId,
     priority: filters.priority,
     type: filters.type,
     status: filters.status,
@@ -70,6 +75,18 @@ export const labelsApi = {
   list: (projectRef: string) => api.get<LabelSummary[]>(`/projects/${projectRef}/labels`),
   create: (projectRef: string, input: CreateLabelInput) =>
     api.post<LabelSummary>(`/projects/${projectRef}/labels`, input),
+  update: (projectRef: string, labelId: string, input: UpdateLabelInput) =>
+    api.patch<LabelSummary>(`/projects/${projectRef}/labels/${labelId}`, input),
   remove: (projectRef: string, labelId: string) =>
     api.delete<void>(`/projects/${projectRef}/labels/${labelId}`),
+};
+
+export const tagsApi = {
+  list: (projectRef: string) => api.get<TagSummary[]>(`/projects/${projectRef}/tags`),
+  create: (projectRef: string, input: CreateTagInput) =>
+    api.post<TagSummary>(`/projects/${projectRef}/tags`, input),
+  update: (projectRef: string, tagId: string, input: UpdateTagInput) =>
+    api.patch<TagSummary>(`/projects/${projectRef}/tags/${tagId}`, input),
+  remove: (projectRef: string, tagId: string) =>
+    api.delete<void>(`/projects/${projectRef}/tags/${tagId}`),
 };

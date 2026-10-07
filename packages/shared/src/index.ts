@@ -10,6 +10,7 @@ export * from './dto/project-document';
 export * from './dto/work-item';
 export * from './dto/work-item-import';
 export * from './dto/label';
+export * from './dto/tag';
 export * from './dto/sprint';
 export * from './dto/repository';
 export * from './dto/collaboration';

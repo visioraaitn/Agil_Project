@@ -122,6 +122,7 @@ model Project {
   workItems     WorkItem[]
   sprints       Sprint[]
   labels        Label[]
+  tags          Tag[]
   milestones    Milestone[]
   activities    ActivityLog[]
   notifications Notification[]
@@ -307,6 +308,32 @@ model WorkItemLabel {
   @@index([labelId])
 }
 
+/// Tags techniques, définis au niveau projet
+model Tag {
+  id        String   @id @default(uuid())
+  projectId String
+  name      String
+  color     String   @default("#0078D4")
+  createdAt DateTime @default(now())
+
+  project   Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workItems WorkItemTag[]
+
+  @@unique([projectId, name])
+}
+
+model WorkItemTag {
+  workItemId String
+  tagId      String
+  assignedAt DateTime @default(now())
+
+  workItem WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([workItemId, tagId])
+  @@index([tagId])
+}
+
 /// F.3 · Jalons affichés dans le calendrier / la roadmap
 model Milestone {
   id          String   @id @default(uuid())
@@ -400,6 +427,7 @@ model WorkItem {
   assignees          WorkItemAssignee[]
   reporter           User                  @relation("WorkItemReporter", fields: [reporterId], references: [id])
   labels             WorkItemLabel[]
+  tags               WorkItemTag[]
   acceptanceCriteria AcceptanceCriterion[]
   attachments        Attachment[]
   comments           Comment[]

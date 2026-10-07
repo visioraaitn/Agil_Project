@@ -2,12 +2,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   BoardColumn,
   CreateLabelInput,
+  CreateTagInput,
   CreateWorkItemInput,
   MoveWorkItemInput,
+  UpdateLabelInput,
+  UpdateTagInput,
   UpdateWorkItemInput,
   WorkItemFilters,
 } from '@visiora/shared';
-import { labelsApi, workItemsApi } from './api';
+import { labelsApi, tagsApi, workItemsApi } from './api';
 
 export const workItemKeys = {
   backlog: (projectRef: string, filters: WorkItemFilters) =>
@@ -17,6 +20,7 @@ export const workItemKeys = {
   detail: (projectRef: string, itemId: string) =>
     ['projects', projectRef, 'work-items', itemId] as const,
   labels: (projectRef: string) => ['projects', projectRef, 'labels'] as const,
+  tags: (projectRef: string) => ['projects', projectRef, 'tags'] as const,
 };
 
 export function useBacklog(projectRef: string, filters: WorkItemFilters) {
@@ -46,6 +50,13 @@ export function useLabels(projectRef: string) {
   return useQuery({
     queryKey: workItemKeys.labels(projectRef),
     queryFn: () => labelsApi.list(projectRef),
+  });
+}
+
+export function useTags(projectRef: string) {
+  return useQuery({
+    queryKey: workItemKeys.tags(projectRef),
+    queryFn: () => tagsApi.list(projectRef),
   });
 }
 
@@ -173,5 +184,59 @@ export function useCreateLabel(projectRef: string) {
   return useMutation({
     mutationFn: (input: CreateLabelInput) => labelsApi.create(projectRef, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: workItemKeys.labels(projectRef) }),
+  });
+}
+
+export function useUpdateLabel(projectRef: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ labelId, input }: { labelId: string; input: UpdateLabelInput }) =>
+      labelsApi.update(projectRef, labelId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: workItemKeys.labels(projectRef) });
+      queryClient.invalidateQueries({ queryKey: ['projects', projectRef] });
+    },
+  });
+}
+
+export function useDeleteLabel(projectRef: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (labelId: string) => labelsApi.remove(projectRef, labelId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: workItemKeys.labels(projectRef) });
+      queryClient.invalidateQueries({ queryKey: ['projects', projectRef] });
+    },
+  });
+}
+
+export function useCreateTag(projectRef: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateTagInput) => tagsApi.create(projectRef, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: workItemKeys.tags(projectRef) }),
+  });
+}
+
+export function useUpdateTag(projectRef: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tagId, input }: { tagId: string; input: UpdateTagInput }) =>
+      tagsApi.update(projectRef, tagId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: workItemKeys.tags(projectRef) });
+      queryClient.invalidateQueries({ queryKey: ['projects', projectRef] });
+    },
+  });
+}
+
+export function useDeleteTag(projectRef: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (tagId: string) => tagsApi.remove(projectRef, tagId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: workItemKeys.tags(projectRef) });
+      queryClient.invalidateQueries({ queryKey: ['projects', projectRef] });
+    },
   });
 }

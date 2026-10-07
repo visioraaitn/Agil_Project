@@ -3,7 +3,7 @@ import { AlertTriangle } from 'lucide-react';
 import type { WorkItemSummary } from '@visiora/shared';
 import { AvatarStack } from '@/components/common/AvatarStack';
 import { cn } from '@/lib/utils';
-import { LabelChips, PriorityBadge, StoryPoints, TypeIcon } from './WorkItemChrome';
+import { LabelChips, PriorityBadge, StoryPoints, TagChips, TypeIcon } from './WorkItemChrome';
 
 interface WorkItemCardProps {
   item: WorkItemSummary;
@@ -40,7 +40,10 @@ export const WorkItemCard = forwardRef<HTMLDivElement, WorkItemCardProps>(functi
         <StoryPoints points={item.storyPoints} />
       </div>
 
-      <LabelChips labels={item.labels} />
+      <div className="mt-1.5 flex flex-wrap items-center gap-1">
+        <TagChips tags={item.tags} />
+        <LabelChips labels={item.labels} />
+      </div>
 
       {item.isBlocked && (
         <p className="text-danger mt-1 flex items-start gap-1 text-xs">

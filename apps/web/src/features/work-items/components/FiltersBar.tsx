@@ -10,7 +10,7 @@ import {
 } from '@visiora/shared';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/input';
-import { useLabels } from '../hooks';
+import { useLabels, useTags } from '../hooks';
 
 interface FiltersBarProps {
   projectRef: string;
@@ -30,6 +30,7 @@ export function FiltersBar({
   showHideDone = false,
 }: FiltersBarProps) {
   const { data: labels } = useLabels(projectRef);
+  const { data: tags } = useTags(projectRef);
 
   const set = <K extends keyof WorkItemFilters>(key: K, value: WorkItemFilters[K]) =>
     onChange({ ...filters, [key]: value });
@@ -108,12 +109,26 @@ export function FiltersBar({
       </Select>
 
       <Select
+        aria-label="Filtrer par tag"
+        className="h-6.5 w-36 text-sm"
+        value={filters.tagId ?? ''}
+        onChange={(event) => set('tagId', event.target.value || undefined)}
+      >
+        <option value="">Tous les tags</option>
+        {(tags ?? []).map((tag) => (
+          <option key={tag.id} value={tag.id}>
+            {tag.name}
+          </option>
+        ))}
+      </Select>
+
+      <Select
         aria-label="Filtrer par étiquette"
         className="h-6.5 w-36 text-sm"
         value={filters.labelId ?? ''}
         onChange={(event) => set('labelId', event.target.value || undefined)}
       >
-        <option value="">Toutes étiquettes</option>
+        <option value="">Toutes les étiquettes</option>
         {(labels ?? []).map((label) => (
           <option key={label.id} value={label.id}>
             {label.name}

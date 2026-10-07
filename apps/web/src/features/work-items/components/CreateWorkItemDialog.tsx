@@ -19,6 +19,8 @@ import { useProjectMembers } from '@/features/projects/hooks';
 import { useSprints } from '@/features/sprints/hooks';
 import { useCreateWorkItem } from '../hooks';
 import { AssigneeSelector } from './AssigneeSelector';
+import { LabelSection } from './LabelSection';
+import { TagSection } from './TagSection';
 
 interface CreateWorkItemDialogProps {
   open: boolean;
@@ -77,6 +79,8 @@ export function CreateWorkItemDialog({
       assigneeIds: form.assigneeIds,
       status: defaultStatus,
       sprintId: form.sprintId || null,
+      tagIds: form.tagIds,
+      labelIds: form.labelIds,
     };
 
     try {
@@ -239,6 +243,18 @@ export function CreateWorkItemDialog({
           </Field>
         </div>
 
+        <TagSection
+          projectRef={projectRef}
+          selectedIds={form.tagIds}
+          onChange={(tagIds) => setForm({ ...form, tagIds })}
+        />
+
+        <LabelSection
+          projectRef={projectRef}
+          selectedIds={form.labelIds}
+          onChange={(labelIds) => setForm({ ...form, labelIds })}
+        />
+
         <Field
           label="Description de cadrage — Product Owner / Project Lead"
           htmlFor="new-description"
@@ -277,6 +293,8 @@ interface WorkItemForm {
   storyPoints: string;
   assigneeIds: string[];
   sprintId: string;
+  tagIds: string[];
+  labelIds: string[];
 }
 
 function emptyForm(
@@ -294,6 +312,8 @@ function emptyForm(
     storyPoints: '',
     assigneeIds: [],
     sprintId: sprintId ?? '',
+    tagIds: [],
+    labelIds: [],
   };
 }
 

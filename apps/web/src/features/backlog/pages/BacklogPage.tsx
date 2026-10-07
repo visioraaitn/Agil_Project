@@ -39,6 +39,7 @@ import {
   PriorityBadge,
   StatusPill,
   StoryPoints,
+  TagChips,
   TypeIcon,
 } from '@/features/work-items/components/WorkItemChrome';
 import { useBacklog, useReorderBacklog } from '@/features/work-items/hooks';
@@ -327,6 +328,7 @@ function BacklogRow({
         >
           {node.title}
         </button>
+        <TagChips tags={node.tags} />
         <LabelChips labels={node.labels} />
         {node.isBlocked && (
           <span className="bg-red-50 text-danger rounded px-1 text-xs font-semibold">bloqué</span>

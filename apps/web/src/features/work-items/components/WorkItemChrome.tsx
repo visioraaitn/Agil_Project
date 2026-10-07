@@ -65,17 +65,34 @@ export function StoryPoints({ points }: { points: number | null }) {
   );
 }
 
-export function LabelChips({ labels }: { labels: { id: string; name: string; color: string }[] }) {
-  if (labels.length === 0) return null;
+export function LabelChips({ labels }: { labels?: { id: string; name: string; color: string }[] }) {
+  if (!labels || labels.length === 0) return null;
   return (
     <span className="flex flex-wrap items-center gap-1">
       {labels.map((label) => (
         <span
           key={label.id}
-          className="rounded px-1 py-0.5 text-xs font-semibold text-white"
+          className="rounded px-1 py-0.5 text-xs font-semibold text-white shadow-2xs"
           style={{ backgroundColor: label.color }}
         >
           {label.name}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+export function TagChips({ tags }: { tags?: { id: string; name: string; color: string }[] }) {
+  if (!tags || tags.length === 0) return null;
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      {tags.map((tag) => (
+        <span
+          key={tag.id}
+          className="rounded px-1.5 py-0.5 text-xs font-semibold text-white shadow-2xs"
+          style={{ backgroundColor: tag.color }}
+        >
+          {tag.name}
         </span>
       ))}
     </span>

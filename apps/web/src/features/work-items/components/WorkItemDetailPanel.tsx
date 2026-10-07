@@ -31,13 +31,14 @@ import { useProjectMembers, useProjectPermissions } from '@/features/projects/ho
 import { useSprints } from '@/features/sprints/hooks';
 import { AcceptanceCriteriaEditor } from './AcceptanceCriteriaEditor';
 import { AssigneeSelector } from './AssigneeSelector';
+import { LabelSection } from './LabelSection';
 import { SprintConflictDialog } from './SprintConflictDialog';
+import { TagSection } from './TagSection';
 import { StatusPill, TypeIcon } from './WorkItemChrome';
 import {
   useBacklog,
   useCreateWorkItem,
   useDeleteWorkItem,
-  useLabels,
   useUpdateWorkItem,
   useWorkItem,
 } from '../hooks';
@@ -93,7 +94,6 @@ function DetailBody({
 }) {
   const { can } = useProjectPermissions(projectRef);
   const { data: members } = useProjectMembers(projectRef);
-  const { data: labels } = useLabels(projectRef);
   const { data: backlog } = useBacklog(projectRef, {});
   const { data: sprints } = useSprints(projectRef);
   const update = useUpdateWorkItem(projectRef);
@@ -112,7 +112,8 @@ function DetailBody({
 
   const [draft, setDraft] = useState(() => toDraft(item));
   const [criteria, setCriteria] = useState<AcceptanceCriterionInput[]>(item.acceptanceCriteria);
-  const [labelIds, setLabelIds] = useState<string[]>(item.labels.map((label) => label.id));
+  const [tagIds, setTagIds] = useState<string[]>(item.tags?.map((tag) => tag.id) ?? []);
+  const [labelIds, setLabelIds] = useState<string[]>(item.labels?.map((label) => label.id) ?? []);
   const [subtaskTitle, setSubtaskTitle] = useState('');
   const [saveError, setSaveError] = useState<unknown>(null);
   const [sprintConflict, setSprintConflict] = useState<SprintPropagationConflict[] | null>(null);
@@ -121,7 +122,8 @@ function DetailBody({
   useEffect(() => {
     setDraft(toDraft(item));
     setCriteria(item.acceptanceCriteria);
-    setLabelIds(item.labels.map((label) => label.id));
+    setTagIds(item.tags?.map((tag) => tag.id) ?? []);
+    setLabelIds(item.labels?.map((label) => label.id) ?? []);
     setSaveError(null);
   }, [item]);
 
@@ -150,6 +152,7 @@ function DetailBody({
       sprintId: draft.sprintId === (item.sprintId ?? '') ? undefined : draft.sprintId || null,
       isBlocked: draft.isBlocked,
       blockedReason: draft.isBlocked ? draft.blockedReason || null : null,
+      tagIds,
       labelIds,
       acceptanceCriteria: criteria,
       ...(confirmSprintPropagation ? { confirmSprintPropagation: true } : {}),
@@ -402,35 +405,19 @@ function DetailBody({
 
         <AcceptanceCriteriaEditor criteria={criteria} onChange={setCriteria} readOnly={!canEdit} />
 
-        <section>
-          <h3 className="text-ink-700 mb-1 text-sm font-semibold">Étiquettes</h3>
-          <div className="flex flex-wrap gap-1">
-            {(labels ?? []).map((label) => {
-              const selected = labelIds.includes(label.id);
-              return (
-                <button
-                  key={label.id}
-                  type="button"
-                  disabled={!canEdit}
-                  onClick={() =>
-                    setLabelIds(
-                      selected ? labelIds.filter((id) => id !== label.id) : [...labelIds, label.id],
-                    )
-                  }
-                  className={`rounded px-1.5 py-0.5 text-xs font-semibold transition-opacity ${
-                    selected ? 'text-white' : 'text-ink-500 bg-surface-sunken opacity-70'
-                  }`}
-                  style={selected ? { backgroundColor: label.color } : undefined}
-                >
-                  {label.name}
-                </button>
-              );
-            })}
-            {(labels ?? []).length === 0 && (
-              <p className="text-ink-400 text-sm">Aucune étiquette définie sur ce projet.</p>
-            )}
-          </div>
-        </section>
+        <TagSection
+          projectRef={projectRef}
+          selectedIds={tagIds}
+          onChange={setTagIds}
+          disabled={!canEdit}
+        />
+
+        <LabelSection
+          projectRef={projectRef}
+          selectedIds={labelIds}
+          onChange={setLabelIds}
+          disabled={!canEdit}
+        />
 
         <section>
           <label className="text-ink-700 flex items-center gap-2 text-base">

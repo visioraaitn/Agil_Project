@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { Priority, WorkItemStatus, WorkItemType } from '../enums';
 import { uuidSchema } from './common';
 import type { UserDirectoryEntry } from './user';
+import type { TagSummary } from './tag';
 
 /**
  * C.1 · Hiérarchie autorisée. Un EPIC est toujours racine ; une SUBTASK est
@@ -39,6 +40,7 @@ export const createWorkItemSchema = z
     assigneeId: uuidSchema.nullable().optional(),
     sprintId: uuidSchema.nullable().optional(),
     labelIds: z.array(uuidSchema).max(20).optional(),
+    tagIds: z.array(uuidSchema).max(20).optional(),
     startDate: isoDate.nullable().optional(),
     dueDate: isoDate.nullable().optional(),
   })
@@ -70,6 +72,7 @@ export const updateWorkItemSchema = z
     assigneeId: uuidSchema.nullable().optional(),
     sprintId: uuidSchema.nullable().optional(),
     labelIds: z.array(uuidSchema).max(20).optional(),
+    tagIds: z.array(uuidSchema).max(20).optional(),
     startDate: isoDate.nullable().optional(),
     dueDate: isoDate.nullable().optional(),
     isBlocked: z.boolean().optional(),
@@ -141,6 +144,7 @@ export const workItemFiltersSchema = z.object({
   creatorId: uuidSchema.optional(),
   sprintId: uuidSchema.optional(),
   labelId: uuidSchema.optional(),
+  tagId: uuidSchema.optional(),
   priority: z.nativeEnum(Priority).optional(),
   type: z.nativeEnum(WorkItemType).optional(),
   status: z.nativeEnum(WorkItemStatus).optional(),
@@ -190,6 +194,7 @@ export interface WorkItemSummary {
   assignees: UserDirectoryEntry[];
   reporter: UserDirectoryEntry;
   labels: LabelSummary[];
+  tags: TagSummary[];
   childCount: number;
   doneChildCount: number;
   /** Somme des points des descendants (les epics n'estiment pas eux-mêmes). */

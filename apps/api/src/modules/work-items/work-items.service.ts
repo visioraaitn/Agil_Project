@@ -135,7 +135,13 @@ export class WorkItemsService {
   ): Promise<WorkItemDetail> {
     await this.assertHierarchy(projectId, input.type, input.parentId ?? null);
     const assigneeIds = resolveAssigneeIds(input) ?? [];
-    await this.assertReferences(projectId, assigneeIds, input.sprintId, input.labelIds);
+    await this.assertReferences(
+      projectId,
+      assigneeIds,
+      input.sprintId,
+      input.labelIds,
+      input.tagIds,
+    );
     const sprintId = await this.inheritSprintId(input.parentId ?? null, input.sprintId);
 
     const targetStatus = input.status ?? WorkItemStatus.TODO;
@@ -178,6 +184,9 @@ export class WorkItemsService {
           ...(input.labelIds?.length
             ? { labels: { create: input.labelIds.map((labelId) => ({ labelId })) } }
             : {}),
+          ...(input.tagIds?.length
+            ? { tags: { create: input.tagIds.map((tagId) => ({ tagId })) } }
+            : {}),
           ...(assigneeIds.length
             ? { assignees: { create: assigneeIds.map((userId) => ({ userId })) } }
             : {}),
@@ -208,7 +217,13 @@ export class WorkItemsService {
     }
 
     const assigneeIds = resolveAssigneeIds(input);
-    await this.assertReferences(projectId, assigneeIds, input.sprintId, input.labelIds);
+    await this.assertReferences(
+      projectId,
+      assigneeIds,
+      input.sprintId,
+      input.labelIds,
+      input.tagIds,
+    );
 
     // C.1 · Un Epic propage son sprint à ses descendants — jamais silencieusement
     // si certains sont déjà affectés ailleurs (voir assertNoSprintConflict).
@@ -304,6 +319,17 @@ export class WorkItemsService {
         if (input.labelIds.length > 0) {
           await tx.workItemLabel.createMany({
             data: input.labelIds.map((labelId) => ({ workItemId: itemId, labelId })),
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      // Les tags techniques sont remplacés en bloc.
+      if (input.tagIds) {
+        await tx.workItemTag.deleteMany({ where: { workItemId: itemId } });
+        if (input.tagIds.length > 0) {
+          await tx.workItemTag.createMany({
+            data: input.tagIds.map((tagId) => ({ workItemId: itemId, tagId })),
             skipDuplicates: true,
           });
         }
@@ -513,6 +539,7 @@ export class WorkItemsService {
       ...(filters.isBlocked !== undefined ? { isBlocked: filters.isBlocked } : {}),
       ...(filters.hideDone ? { status: { not: WorkItemStatus.DONE } } : {}),
       ...(filters.labelId ? { labels: { some: { labelId: filters.labelId } } } : {}),
+      ...(filters.tagId ? { tags: { some: { tagId: filters.tagId } } } : {}),
       ...(compoundFilters.length ? { AND: compoundFilters } : {}),
     };
   }
@@ -787,6 +814,7 @@ export class WorkItemsService {
     assigneeIds?: string[],
     sprintId?: string | null,
     labelIds?: string[],
+    tagIds?: string[],
   ): Promise<void> {
     if (assigneeIds?.length) {
       const uniqueIds = [...new Set(assigneeIds)];
@@ -822,6 +850,18 @@ export class WorkItemsService {
         throw new BadRequestException({
           code: 'LABEL_NOT_FOUND',
           message: 'Une étiquette référencée n’appartient pas au projet',
+        });
+      }
+    }
+
+    if (tagIds?.length) {
+      const count = await this.prisma.tag.count({
+        where: { projectId, id: { in: tagIds } },
+      });
+      if (count !== new Set(tagIds).size) {
+        throw new BadRequestException({
+          code: 'TAG_NOT_FOUND',
+          message: 'Un tag référencé n’appartient pas au projet',
         });
       }
     }

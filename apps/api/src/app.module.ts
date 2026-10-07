@@ -9,6 +9,7 @@ import { ProjectsModule } from './modules/projects/projects.module';
 import { UsersModule } from './modules/users/users.module';
 import { WorkItemsModule } from './modules/work-items/work-items.module';
 import { LabelsModule } from './modules/labels/labels.module';
+import { TagsModule } from './modules/tags/tags.module';
 import { SprintsModule } from './modules/sprints/sprints.module';
 import { RepositoriesModule } from './modules/repositories/repositories.module';
 import { CollaborationModule } from './modules/collaboration/collaboration.module';
@@ -34,6 +35,7 @@ import { validateEnv } from './config/env';
     ProjectsModule,
     WorkItemsModule,
     LabelsModule,
+    TagsModule,
     SprintsModule,
     RepositoriesModule,
     CollaborationModule,

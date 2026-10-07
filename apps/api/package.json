@@ -19,7 +19,8 @@
     "prisma:studio": "dotenv -e ../../.env -- prisma studio",
     "s3:check": "dotenv -e ../../.env -- node scripts/s3-check.js",
     "postinstall": "prisma generate",
-    "prisma:seed:labels": "dotenv -e ../../.env -- ts-node --project tsconfig.json prisma/seed-labels.ts"
+    "prisma:seed:labels": "dotenv -e ../../.env -- ts-node --project tsconfig.json prisma/seed-labels.ts",
+    "prisma:seed:tags": "dotenv -e ../../.env -- ts-node --project tsconfig.json prisma/seed-tags.ts"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"

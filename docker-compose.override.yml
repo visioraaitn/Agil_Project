@@ -1,0 +1,17 @@
+# Fichier local, non versionné : remappe les ports hôte de l'infra dev
+# (5432/6379/9000/9001 sont déjà pris par d'autres projets Docker sur cette
+# machine). Docker Compose le fusionne automatiquement avec docker-compose.yml.
+services:
+  postgres:
+    ports: !override
+      - '5434:5432'
+  redis:
+    ports: !override
+      - '6382:6379'
+  minio:
+    # minio/minio:latest n'est plus tirable depuis Docker Hub (accès restreint) ;
+    # cette version est déjà en cache local (utilisée par un autre projet ici).
+    image: minio/minio:RELEASE.2025-02-03T21-03-04Z
+    ports: !override
+      - '9010:9000'
+      - '9011:9001'

@@ -19,6 +19,8 @@ import {
   UpdateProjectMemberInput,
 } from '@visiora/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { seedProjectTags } from '../../../prisma/default-tags';
+import { seedProjectLabels } from '../../../prisma/default-labels';
 import { ProjectAccessService } from '../access/project-access.service';
 import { EmailService } from '../collaboration/email.service';
 import { ObjectStorageService } from '../storage/object-storage.service';
@@ -147,6 +149,9 @@ export class ProjectsService {
       },
       select: PROJECT_FIELDS,
     });
+
+    await seedProjectTags(this.prisma, project.id);
+    await seedProjectLabels(this.prisma, project.id);
 
     return toProjectSummary(project, ProjectRole.PROJECT_LEAD);
   }
