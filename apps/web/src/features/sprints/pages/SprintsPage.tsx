@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   CheckCircle2,
@@ -15,7 +15,7 @@ import type {
   BacklogNode,
   RetrospectiveItemInput,
   SprintDetail,
-  SprintStatus,
+  SprintPropagationConflict,
 } from '@visiora/shared';
 import {
   LABELS_FR,
@@ -34,11 +34,19 @@ import { Field } from '@/components/ui/field';
 import { Input, Textarea } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { useProjectPermissions } from '@/features/projects/hooks';
+import { ApiError } from '@/lib/api-client';
 import { CreateWorkItemDialog } from '@/features/work-items/components/CreateWorkItemDialog';
-import { StatusPill, StoryPoints } from '@/features/work-items/components/WorkItemChrome';
+import { SprintConflictDialog } from '@/features/work-items/components/SprintConflictDialog';
+import {
+  StatusPill,
+  StoryPoints,
+  TypeIcon,
+} from '@/features/work-items/components/WorkItemChrome';
 import { useBacklog, useUpdateWorkItem } from '@/features/work-items/hooks';
 import { CloseSprintDialog } from '../components/CloseSprintDialog';
 import { SprintReportDialog } from '../components/SprintReportDialog';
+import { SprintStatusBadge } from '../components/SprintStatusBadge';
+import { formatSprintDate as formatDate } from '../format';
 import {
   defaultSprintId,
   useCreateSprint,
@@ -101,7 +109,7 @@ export function SprintsPage() {
                   <span className="text-ink-900 min-w-0 flex-1 truncate text-base font-semibold">
                     {sprint.name}
                   </span>
-                  <SprintBadge status={sprint.status} />
+                  <SprintStatusBadge status={sprint.status} />
                 </span>
                 <span className="text-ink-400 text-xs">
                   {formatDate(sprint.startDate)} - {formatDate(sprint.endDate)}
@@ -173,11 +181,9 @@ function SprintDetailView({
   const [assignmentOpen, setAssignmentOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
   const [newItemOpen, setNewItemOpen] = useState(false);
-  const { data: backlog, isLoading: backlogLoading } = useBacklog(projectRef, {
-    type: WorkItemType.STORY,
-  });
-  // Arbre complet (tous types) pour le sélecteur de parent du dialog de création.
-  const { data: fullBacklog } = useBacklog(projectRef, {});
+  // Arbre complet (tous types) : Epics + User Stories pour l'affectation,
+  // sélecteur de parent pour le dialog de création.
+  const { data: fullBacklog, isLoading: backlogLoading } = useBacklog(projectRef, {});
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -189,7 +195,7 @@ function SprintDetailView({
               {formatDate(sprint.startDate)} - {formatDate(sprint.endDate)}
             </p>
           </div>
-          <SprintBadge status={sprint.status} />
+          <SprintStatusBadge status={sprint.status} />
           {canStart && sprint.status === SprintStatusEnum.PLANNED && (
             <Button variant="primary" onClick={onStartSprint} loading={starting}>
               <Play className="size-3.5" strokeWidth={2} />
@@ -199,7 +205,7 @@ function SprintDetailView({
           {canAssign && sprint.status !== SprintStatusEnum.COMPLETED && (
             <Button variant="secondary" onClick={() => setAssignmentOpen(true)}>
               <UserPlus className="size-3.5" strokeWidth={2} />
-              Affecter des US
+              Affecter des Work Items
             </Button>
           )}
           {canCreate && sprint.status !== SprintStatusEnum.COMPLETED && (
@@ -235,12 +241,12 @@ function SprintDetailView({
         projectName={projectRef}
       />
 
-      <SprintStoriesDialog
+      <SprintAssignmentDialog
         open={assignmentOpen}
         onClose={() => setAssignmentOpen(false)}
         projectRef={projectRef}
         sprint={sprint}
-        candidates={backlog ?? []}
+        candidates={fullBacklog ?? []}
         loading={backlogLoading}
       />
 
@@ -278,8 +284,9 @@ function SprintDetailView({
             sprint.items.map((item) => (
               <div
                 key={item.id}
-                className="border-border-subtle grid grid-cols-[90px_1fr_120px_60px] items-center gap-2 border-b px-3 py-1.5 last:border-b-0"
+                className="border-border-subtle grid grid-cols-[14px_90px_1fr_120px_60px] items-center gap-2 border-b px-3 py-1.5 last:border-b-0"
               >
+                <TypeIcon type={item.type} />
                 <span className="text-ink-400 text-xs font-semibold">{item.key}</span>
                 <span className="text-ink-900 truncate text-base">{item.title}</span>
                 <StatusPill status={item.status} />
@@ -295,7 +302,10 @@ function SprintDetailView({
   );
 }
 
-function SprintStoriesDialog({
+/** Types affectés directement à un sprint depuis la page Sprints. */
+const ASSIGNABLE_TYPES: readonly WorkItemType[] = [WorkItemType.EPIC, WorkItemType.STORY];
+
+function SprintAssignmentDialog({
   open,
   onClose,
   projectRef,
@@ -314,76 +324,122 @@ function SprintStoriesDialog({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [saveError, setSaveError] = useState<unknown>(null);
+  const [conflicts, setConflicts] = useState<SprintPropagationConflict[] | null>(null);
+  const [saving, setSaving] = useState(false);
+  const initialized = useRef(false);
 
-  const stories = useMemo(
-    () => flattenBacklog(candidates).filter((item) => item.type === WorkItemType.STORY),
+  const assignable = useMemo(
+    () => flattenBacklog(candidates).filter((item) => ASSIGNABLE_TYPES.includes(item.type)),
     [candidates],
   );
-  const availableStories = useMemo(
-    () => stories.filter((item) => item.sprintId === null || item.sprintId === sprint.id),
-    [sprint.id, stories],
+  const availableItems = useMemo(
+    () => assignable.filter((item) => item.sprintId === null || item.sprintId === sprint.id),
+    [sprint.id, assignable],
   );
-  const unavailableCount = stories.length - availableStories.length;
+  const unavailableCount = assignable.length - availableItems.length;
   const normalizedSearch = search.trim().toLocaleLowerCase('fr');
-  const visibleStories = availableStories.filter(
+  const visibleItems = availableItems.filter(
     (item) =>
       !normalizedSearch ||
       `${item.key} ${item.title}`.toLocaleLowerCase('fr').includes(normalizedSearch),
   );
 
+  // La sélection part de l'état serveur à l'ouverture, puis n'est plus écrasée
+  // par les rechargements déclenchés pendant l'enregistrement.
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      initialized.current = false;
+      return;
+    }
+    if (initialized.current || loading) return;
+    initialized.current = true;
     setSelectedIds(
       new Set(
-        availableStories.filter((item) => item.sprintId === sprint.id).map((item) => item.id),
+        availableItems.filter((item) => item.sprintId === sprint.id).map((item) => item.id),
       ),
     );
     setSearch('');
     setSaveError(null);
-  }, [open, sprint.id, availableStories]);
+    setConflicts(null);
+  }, [open, loading, sprint.id, availableItems]);
 
-  const toggle = (itemId: string, checked: boolean) => {
+  /** (Dé)cocher un Epic (dé)coche aussi ses User Stories : c'est ce que fera la propagation backend. */
+  const toggle = (item: BacklogNode, checked: boolean) => {
+    const affected = [
+      item.id,
+      ...(item.type === WorkItemType.EPIC
+        ? availableItems.filter((child) => child.parentId === item.id).map((child) => child.id)
+        : []),
+    ];
     setSelectedIds((current) => {
       const next = new Set(current);
-      if (checked) next.add(itemId);
-      else next.delete(itemId);
+      for (const id of affected) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
       return next;
     });
   };
 
-  const save = async () => {
+  const targetSprintOf = (itemId: string) => (selectedIds.has(itemId) ? sprint.id : null);
+
+  /**
+   * Les Epics sont enregistrés d'abord : le backend propage leur sprint à toute
+   * leur descendance (C.1). Les User Stories dont la case a changé sont ensuite
+   * enregistrées, ce qui préserve un choix explicite différent de celui de l'Epic.
+   */
+  const save = async (confirmSprintPropagation = false) => {
     setSaveError(null);
-    const changes = availableStories.filter((item) => {
-      const wasSelected = item.sprintId === sprint.id;
-      return wasSelected !== selectedIds.has(item.id);
-    });
+    setSaving(true);
+    const changes = availableItems.filter((item) => item.sprintId !== targetSprintOf(item.id));
+    const changedEpicIds = changes
+      .filter((item) => item.type === WorkItemType.EPIC)
+      .map((item) => item.id);
+    const storyChanges = changes.filter((item) => item.type !== WorkItemType.EPIC);
 
     try {
+      for (const epicId of changedEpicIds) {
+        await updateWorkItem.mutateAsync({
+          itemId: epicId,
+          input: {
+            sprintId: targetSprintOf(epicId),
+            ...(confirmSprintPropagation ? { confirmSprintPropagation: true } : {}),
+          },
+        });
+      }
       await Promise.all(
-        changes.map((item) =>
+        storyChanges.map((item) =>
           updateWorkItem.mutateAsync({
             itemId: item.id,
-            input: { sprintId: selectedIds.has(item.id) ? sprint.id : null },
+            input: { sprintId: targetSprintOf(item.id) },
           }),
         ),
       );
+      setConflicts(null);
       onClose();
     } catch (error) {
-      setSaveError(error);
+      if (error instanceof ApiError && error.code === 'SPRINT_PROPAGATION_CONFIRMATION_REQUIRED') {
+        setConflicts((error.details?.conflicts as SprintPropagationConflict[] | undefined) ?? []);
+      } else {
+        setSaveError(error);
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
     <Modal
       open={open}
-      title={`Affecter des User Stories · ${sprint.name}`}
+      title={`Affecter des Work Items · ${sprint.name}`}
+      width="md"
       onClose={onClose}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
             Annuler
           </Button>
-          <Button variant="primary" onClick={save} loading={updateWorkItem.isPending}>
+          <Button variant="primary" onClick={() => void save()} loading={saving}>
             Enregistrer les affectations
           </Button>
         </>
@@ -396,26 +452,28 @@ function SprintStoriesDialog({
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Rechercher une User Story…"
-            aria-label="Rechercher une User Story à affecter"
+            placeholder="Rechercher un Epic ou une User Story…"
+            aria-label="Rechercher un Work Item à affecter"
             className="text-ink-700 placeholder:text-ink-400 w-full bg-transparent text-sm outline-none"
           />
         </div>
 
+        <p className="text-ink-500 text-xs">
+          Affecter un Epic affecte aussi toutes ses User Stories, Bugs et Sous-tâches.
+        </p>
         {unavailableCount > 0 && (
           <p className="text-ink-500 text-xs">
-            {unavailableCount} User Story(s) déjà affectée(s) à un autre sprint ne sont pas
-            proposées.
+            {unavailableCount} Work Item(s) déjà affecté(s) à un autre sprint ne sont pas proposés.
           </p>
         )}
 
         <div className="border-border-default scrollbar-thin max-h-80 overflow-y-auto rounded border">
           {loading ? (
             <LoadingState />
-          ) : visibleStories.length === 0 ? (
-            <EmptyState title="Aucune User Story disponible" />
+          ) : visibleItems.length === 0 ? (
+            <EmptyState title="Aucun Work Item disponible" />
           ) : (
-            visibleStories.map((item) => (
+            visibleItems.map((item) => (
               <label
                 key={item.id}
                 className="border-border-subtle hover:bg-surface-muted flex cursor-pointer items-center gap-2 border-b px-3 py-2 last:border-b-0"
@@ -423,17 +481,38 @@ function SprintStoriesDialog({
                 <input
                   type="checkbox"
                   checked={selectedIds.has(item.id)}
-                  onChange={(event) => toggle(item.id, event.target.checked)}
+                  onChange={(event) => toggle(item, event.target.checked)}
                   className="size-3.5"
                 />
+                <span className="flex w-24 shrink-0 items-center gap-1.5">
+                  <TypeIcon type={item.type} />
+                  <span className="text-ink-500 text-xs font-medium">
+                    {LABELS_FR.workItemType[item.type]}
+                  </span>
+                </span>
                 <span className="text-ink-400 w-24 shrink-0 text-xs font-semibold">{item.key}</span>
-                <span className="text-ink-900 min-w-0 flex-1 truncate text-sm">{item.title}</span>
+                <span
+                  className={`text-ink-900 min-w-0 flex-1 truncate text-sm ${
+                    item.type === WorkItemType.EPIC ? 'font-semibold' : ''
+                  }`}
+                >
+                  {item.title}
+                </span>
                 <StatusPill status={item.status} />
               </label>
             ))
           )}
         </div>
       </div>
+
+      <SprintConflictDialog
+        open={conflicts !== null}
+        conflicts={conflicts ?? []}
+        targetSprintName={sprint.name}
+        onCancel={() => setConflicts(null)}
+        onConfirm={() => void save(true)}
+        confirming={saving}
+      />
     </Modal>
   );
 }
@@ -639,14 +718,6 @@ function Metric({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function SprintBadge({ status }: { status: SprintStatus }) {
-  return (
-    <span className="bg-surface-sunken text-ink-700 rounded px-1.5 py-0.5 text-xs font-semibold">
-      {LABELS_FR.sprintStatus[status]}
-    </span>
-  );
-}
-
 function ProgressBar({ done, total }: { done: number; total: number }) {
   const width = total > 0 ? Math.round((done / total) * 100) : 0;
   return (
@@ -654,13 +725,4 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
       <span className="bg-accent-500 block h-full" style={{ width: `${Math.min(width, 100)}%` }} />
     </span>
   );
-}
-
-function formatDate(value: string | null) {
-  if (!value) return '-';
-  return new Intl.DateTimeFormat('fr-FR', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(new Date(value));
 }
