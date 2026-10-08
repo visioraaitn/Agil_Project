@@ -224,7 +224,12 @@ function DetailBody({
         </div>
       </header>
 
-      <div className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-3">
+      {/*
+        Corps défilant entre header et footer fixes. Ses sections ne doivent jamais
+        rétrécir : une section en `overflow-hidden` (Description, Compte rendu) a une
+        hauteur minimale nulle et serait écrasée à 0 dès que le formulaire déborde.
+      */}
+      <div className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto px-3 py-3 [&>*]:shrink-0">
         <div className="bg-surface-sunken border-border-subtle flex flex-wrap items-center gap-2 rounded border px-2 py-1.5">
           <span className="text-ink-500 text-xs font-semibold uppercase">Créé par</span>
           <Avatar name={item.reporter.name} avatarUrl={item.reporter.avatarUrl} />

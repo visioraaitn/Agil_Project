@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { Priority, WorkItemStatus, WorkItemType, type BacklogNode } from '@visiora/shared';
-import { buildHierarchyLanes } from './hierarchy';
+import {
+  buildHierarchyLanes,
+  collapsibleRowIds,
+  epicRowId,
+  flattenVisibleRows,
+  storyRowId,
+} from './hierarchy';
 
 const REPORTER = { id: 'u1', name: 'Reporter', email: 'r@x.com', avatarUrl: null };
 
@@ -84,6 +90,15 @@ describe('buildHierarchyLanes', () => {
     expect(result.unlinked).toHaveLength(0);
   });
 
+  it('expose le type réel de la Story/Bug du couloir', () => {
+    const b1 = node({ id: 'b1', key: 'VIS-1-B1', type: WorkItemType.BUG, parentId: 'e1' });
+    const e1 = node({ id: 'e1', key: 'VIS-1', type: WorkItemType.EPIC, children: [b1] });
+
+    const result = buildHierarchyLanes([e1], [b1]);
+
+    expect(result.epics[0]?.stories[0]?.type).toBe(WorkItemType.BUG);
+  });
+
   it("classe un ticket introuvable dans l'arbre en non-lié plutôt que de le masquer", () => {
     const ghost = node({ id: 'ghost', key: 'VIS-9', type: WorkItemType.STORY });
 
@@ -91,5 +106,67 @@ describe('buildHierarchyLanes', () => {
 
     expect(result.epics).toHaveLength(0);
     expect(result.unlinked.map((i) => i.id)).toEqual(['ghost']);
+  });
+});
+
+describe('flattenVisibleRows', () => {
+  // Epic e1 > Story s1 (Sous-tâches t1 À faire, t2 En test) + Story s2 sans enfant.
+  const t1 = node({ id: 't1', key: 'VIS-1-1-T1', type: WorkItemType.SUBTASK, parentId: 's1' });
+  const t2 = node({
+    id: 't2',
+    key: 'VIS-1-1-T2',
+    type: WorkItemType.SUBTASK,
+    parentId: 's1',
+    status: WorkItemStatus.IN_TEST,
+  });
+  const s1 = node({
+    id: 's1',
+    key: 'VIS-1-1',
+    type: WorkItemType.STORY,
+    parentId: 'e1',
+    status: WorkItemStatus.IN_PROGRESS,
+    children: [t1, t2],
+  });
+  const s2 = node({ id: 's2', key: 'VIS-1-2', type: WorkItemType.STORY, parentId: 'e1' });
+  const e1 = node({ id: 'e1', key: 'VIS-1', type: WorkItemType.EPIC, children: [s1, s2] });
+  const board = buildHierarchyLanes([e1], [s1, t1, t2, s2]);
+
+  const visibleCardIds = (collapsed: Set<string>) =>
+    flattenVisibleRows(board, collapsed)
+      .flatMap((row) => (row.kind === 'epic' ? [] : row.cards))
+      .map((item) => item.id)
+      .sort();
+
+  it("ne rend repliables que l'Epic et les Stories ayant des enfants", () => {
+    expect(collapsibleRowIds(board)).toEqual([epicRowId('e1'), storyRowId('s1')]);
+  });
+
+  it('tout déplié : chaque carte garde son propre statut, sous la ligne de son parent', () => {
+    const rows = flattenVisibleRows(board, new Set());
+    expect(rows.map((row) => row.rowId)).toEqual([
+      epicRowId('e1'),
+      storyRowId('s1'),
+      storyRowId('s2'),
+    ]);
+    const storyRow = rows[1];
+    expect(storyRow?.kind === 'story' && storyRow.hasChildren).toBe(true);
+    const cards = storyRow?.kind === 'story' ? storyRow.cards : [];
+    expect(cards.find((item) => item.id === 't2')?.status).toBe(WorkItemStatus.IN_TEST);
+    expect(cards.find((item) => item.id === 's1')?.status).toBe(WorkItemStatus.IN_PROGRESS);
+  });
+
+  it('replier une Story masque ses Sous-tâches mais pas les autres Stories', () => {
+    expect(visibleCardIds(new Set([storyRowId('s1')]))).toEqual(['s1', 's2']);
+  });
+
+  it('replier un Epic masque toute sa descendance, même une Story dépliée', () => {
+    const rows = flattenVisibleRows(board, new Set([epicRowId('e1')]));
+    expect(rows.map((row) => row.rowId)).toEqual([epicRowId('e1')]);
+    expect(visibleCardIds(new Set([epicRowId('e1')]))).toEqual([]);
+  });
+
+  it('Tout replier puis Tout déplier restaure la hiérarchie complète', () => {
+    expect(visibleCardIds(new Set(collapsibleRowIds(board)))).toEqual([]);
+    expect(visibleCardIds(new Set())).toEqual(['s1', 's2', 't1', 't2']);
   });
 });

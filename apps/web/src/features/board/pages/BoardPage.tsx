@@ -14,17 +14,14 @@ import {
 import {
   SortableContext,
   sortableKeyboardCoordinates,
-  useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import { useDroppable } from '@dnd-kit/core';
 import { ChevronDown, ChevronRight, Layers, Plus, SlidersHorizontal } from 'lucide-react';
 import {
   LABELS_FR,
   Priority,
   WorkItemStatus,
-  WorkItemType,
   type BoardColumn,
   type WorkItemSummary,
 } from '@visiora/shared';
@@ -36,16 +33,17 @@ import { useProjectMembers, useProjectPermissions } from '@/features/projects/ho
 import { defaultSprintId, useSprints } from '@/features/sprints/hooks';
 import { CreateWorkItemDialog } from '@/features/work-items/components/CreateWorkItemDialog';
 import { FiltersBar } from '@/features/work-items/components/FiltersBar';
-import { TypeIcon } from '@/features/work-items/components/WorkItemChrome';
 import { WorkItemCard } from '@/features/work-items/components/WorkItemCard';
 import { WorkItemDetailPanel } from '@/features/work-items/components/WorkItemDetailPanel';
 import { useBacklog, useBoard, useMoveWorkItem } from '@/features/work-items/hooks';
 import { useUrlWorkItemFilters } from '@/features/work-items/use-url-work-item-filters';
 import { loadBoardConfig, type BoardConfig, type ColumnDefinition } from '../board-config';
+import { columnDropId, parseColumnDropId } from '../board-dnd';
 import { BoardColumnsConfigDialog } from '../components/BoardColumnsConfigDialog';
-import { buildHierarchyLanes } from '../hierarchy';
-
-const COLUMN_PREFIX = 'column:';
+import { HierarchyBoardGrid } from '../components/HierarchyBoardGrid';
+import { SortableCard } from '../components/SortableCard';
+import { SprintIndicator } from '../components/SprintIndicator';
+import { buildHierarchyLanes, collapsibleRowIds, flattenVisibleRows } from '../hierarchy';
 
 type SwimlaneMode = 'none' | 'assignee' | 'epic' | 'priority' | 'hierarchy';
 
@@ -64,7 +62,7 @@ export function BoardPage() {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [swimlane, setSwimlane] = useState<SwimlaneMode>('none');
+  const [swimlane, setSwimlane] = useState<SwimlaneMode>('hierarchy');
   const [collapsedLanes, setCollapsedLanes] = useState<Set<string>>(new Set());
   const [boardConfig, setBoardConfig] = useState<BoardConfig>(() => loadBoardConfig(projectKey));
 
@@ -176,11 +174,16 @@ export function BoardPage() {
     return [{ id: 'all', title: 'Tous les tickets', items: allItems }];
   }, [swimlane, columns, allItems, directory, tree]);
 
-  // Couloirs Epic > Story/Bug du mode "Par hiérarchie" : construits séparément
-  // de swimlaneGroups (logique de résolution d'ascendance différente).
+  // Colonne « Work Items » du mode "Par hiérarchie" : hiérarchie réelle (parentId)
+  // résolue via l'arbre complet du backlog, séparément de swimlaneGroups.
   const hierarchyBoard = useMemo(
     () => buildHierarchyLanes(tree ?? [], allItems),
     [tree, allItems],
+  );
+  const collapsibleIds = useMemo(() => collapsibleRowIds(hierarchyBoard), [hierarchyBoard]);
+  const hierarchyRows = useMemo(
+    () => flattenVisibleRows(hierarchyBoard, collapsedLanes),
+    [hierarchyBoard, collapsedLanes],
   );
 
   const toggleLane = (laneId: string) => {
@@ -253,6 +256,7 @@ export function BoardPage() {
             </option>
           ))}
         </Select>
+        <SprintIndicator sprint={selectedSprint} />
 
         {/* Sélecteur de Swimlanes */}
         <div className="ml-4 flex items-center gap-1.5 text-xs text-ink-500 bg-surface-sunken px-2 py-1 rounded border border-border-subtle">
@@ -307,144 +311,19 @@ export function BoardPage() {
       >
         <div className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
           {swimlane === 'hierarchy' ? (
-            /* Vue hiérarchique Epic > Story/Bug, chaque niveau repliable indépendamment */
-            <>
-              {hierarchyBoard.epics.map((epicLane) => {
-                const epicLaneId = `epic:${epicLane.id}`;
-                const epicCollapsed = collapsedLanes.has(epicLaneId);
-                const epicItems = epicLane.stories.flatMap((story) => story.items);
-                const epicPoints = epicItems.reduce((acc, it) => acc + (it.storyPoints ?? 0), 0);
-
-                return (
-                  <section
-                    key={epicLane.id}
-                    className="border-border-default bg-surface rounded border overflow-hidden shadow-xs"
-                  >
-                    <header
-                      onClick={() => toggleLane(epicLaneId)}
-                      className="bg-surface-muted hover:bg-surface-sunken border-border-subtle flex items-center gap-2 border-b px-3 py-2 cursor-pointer transition-colors"
-                    >
-                      {epicCollapsed ? (
-                        <ChevronRight className="size-4 text-ink-500" />
-                      ) : (
-                        <ChevronDown className="size-4 text-ink-500" />
-                      )}
-                      {!epicLane.isNoEpic && <TypeIcon type={WorkItemType.EPIC} />}
-                      <h2 className="text-ink-900 text-sm font-semibold truncate">
-                        {epicLane.isNoEpic ? epicLane.title : `${epicLane.key} · ${epicLane.title}`}
-                      </h2>
-                      <span className="text-ink-400 text-xs font-medium">
-                        ({epicItems.length} tickets · {epicPoints} pts)
-                      </span>
-                    </header>
-
-                    {!epicCollapsed && (
-                      <div className="flex flex-col gap-1.5 p-2.5 bg-surface-sunken/40">
-                        {epicLane.stories.map((storyLane) => {
-                          const storyLaneId = `story:${storyLane.id}`;
-                          const storyCollapsed = collapsedLanes.has(storyLaneId);
-                          const storyPoints = storyLane.items.reduce(
-                            (acc, it) => acc + (it.storyPoints ?? 0),
-                            0,
-                          );
-
-                          return (
-                            <div
-                              key={storyLane.id}
-                              className="border-border-default bg-surface rounded border overflow-hidden"
-                            >
-                              <header
-                                onClick={() => toggleLane(storyLaneId)}
-                                className="hover:bg-surface-muted flex items-center gap-2 px-2.5 py-1.5 cursor-pointer transition-colors"
-                              >
-                                {storyCollapsed ? (
-                                  <ChevronRight className="size-3.5 text-ink-500" />
-                                ) : (
-                                  <ChevronDown className="size-3.5 text-ink-500" />
-                                )}
-                                <span className="text-ink-400 shrink-0 text-xs font-semibold">
-                                  {storyLane.key}
-                                </span>
-                                <span className="text-ink-900 min-w-0 flex-1 truncate text-sm">
-                                  {storyLane.title}
-                                </span>
-                                <span className="text-ink-400 text-xs font-medium">
-                                  ({storyLane.items.length} · {storyPoints} pts)
-                                </span>
-                              </header>
-
-                              {!storyCollapsed && (
-                                <div className="flex gap-2.5 overflow-x-auto p-2 items-start border-t border-border-subtle bg-surface-sunken/40">
-                                  {visibleDefs.map((def) => {
-                                    const colItems = storyLane.items.filter(
-                                      (it) => it.status === def.status,
-                                    );
-                                    return (
-                                      <Column
-                                        key={`${storyLane.id}-${def.id}`}
-                                        columnDef={def}
-                                        items={colItems}
-                                        count={colItems.length}
-                                        points={colItems.reduce(
-                                          (acc, it) => acc + (it.storyPoints ?? 0),
-                                          0,
-                                        )}
-                                        onOpen={setOpenItemId}
-                                        draggable={canMove}
-                                        canCreate={false}
-                                        onOpenCreateDialog={() => setCreateDialogOpen(true)}
-                                      />
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </section>
-                );
-              })}
-
-              {hierarchyBoard.unlinked.length > 0 && (
-                <section className="border-border-default bg-surface rounded border overflow-hidden shadow-xs">
-                  <header className="bg-surface-muted border-border-subtle flex items-center gap-2 border-b px-3 py-2">
-                    <h2 className="text-ink-900 text-sm font-semibold">Éléments non liés</h2>
-                    <span className="text-ink-400 text-xs font-medium">
-                      ({hierarchyBoard.unlinked.length} tickets)
-                    </span>
-                  </header>
-                  <div className="flex gap-2.5 overflow-x-auto p-2.5 items-start bg-surface-sunken/40">
-                    {visibleDefs.map((def) => {
-                      const colItems = hierarchyBoard.unlinked.filter(
-                        (it) => it.status === def.status,
-                      );
-                      return (
-                        <Column
-                          key={`unlinked-${def.id}`}
-                          columnDef={def}
-                          items={colItems}
-                          count={colItems.length}
-                          points={colItems.reduce((acc, it) => acc + (it.storyPoints ?? 0), 0)}
-                          onOpen={setOpenItemId}
-                          draggable={canMove}
-                          canCreate={false}
-                          onOpenCreateDialog={() => setCreateDialogOpen(true)}
-                        />
-                      );
-                    })}
-                  </div>
-                </section>
-              )}
-
-              {hierarchyBoard.epics.length === 0 && hierarchyBoard.unlinked.length === 0 && (
-                <EmptyState
-                  title="Aucun ticket"
-                  description="Ce sprint ne contient encore aucune Story, Bug ou Sous-tâche."
-                />
-              )}
-            </>
+            <HierarchyBoardGrid
+              rows={hierarchyRows}
+              columns={columns}
+              columnDefs={visibleDefs}
+              hasCollapsible={collapsibleIds.length > 0}
+              onToggleRow={toggleLane}
+              onExpandAll={() => setCollapsedLanes(new Set())}
+              onCollapseAll={() => setCollapsedLanes(new Set(collapsibleIds))}
+              onOpen={setOpenItemId}
+              draggable={canMove}
+              canCreate={canCreate}
+              onOpenCreateDialog={() => setCreateDialogOpen(true)}
+            />
           ) : swimlane === 'none' ? (
             /* Vue classique en colonnes uniques */
             <div className="flex gap-2.5 overflow-x-auto items-start pb-2">
@@ -510,6 +389,7 @@ export function BoardPage() {
                         return (
                           <Column
                             key={`${lane.id}-${def.id}`}
+                            dropScope={lane.id}
                             columnDef={def}
                             items={laneColItems}
                             count={laneColItems.length}
@@ -569,6 +449,7 @@ export function BoardPage() {
 }
 
 function Column({
+  dropScope,
   columnDef,
   items,
   count,
@@ -578,6 +459,8 @@ function Column({
   canCreate,
   onOpenCreateDialog,
 }: {
+  /** Distingue les zones de dépôt d'un même statut répétées dans plusieurs couloirs. */
+  dropScope?: string;
   columnDef: ColumnDefinition;
   items: WorkItemSummary[];
   count: number;
@@ -587,7 +470,7 @@ function Column({
   canCreate: boolean;
   onOpenCreateDialog: () => void;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: `${COLUMN_PREFIX}${columnDef.status}` });
+  const { setNodeRef, isOver } = useDroppable({ id: columnDropId(columnDef.status, dropScope) });
 
   const wipLimit = columnDef.wipLimit ?? null;
   const isOverWip = wipLimit !== null && count > wipLimit;
@@ -647,39 +530,14 @@ function Column({
   );
 }
 
-function SortableCard({
-  item,
-  onOpen,
-  disabled,
-}: {
-  item: WorkItemSummary;
-  onOpen: (itemId: string) => void;
-  disabled: boolean;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: item.id,
-    disabled,
-  });
-
-  return (
-    <WorkItemCard
-      ref={setNodeRef}
-      item={item}
-      onOpen={onOpen}
-      dragging={isDragging}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      dragHandleProps={{ ...attributes, ...listeners }}
-    />
-  );
-}
-
 function resolveDropTarget(
   columns: BoardColumn[],
   itemId: string,
   overId: string,
 ): { status: WorkItemStatus; beforeId: string | null; afterId: string | null } | null {
-  if (overId.startsWith(COLUMN_PREFIX)) {
-    const status = overId.slice(COLUMN_PREFIX.length) as WorkItemStatus;
+  const droppedStatus = parseColumnDropId(overId);
+  if (droppedStatus) {
+    const status = droppedStatus;
     const items = (columns.find((column) => column.status === status)?.items ?? []).filter(
       (item) => item.id !== itemId,
     );
