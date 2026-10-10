@@ -1,6 +1,23 @@
 import { Priority, WorkItemStatus, WorkItemType, type WorkItemDetail } from '@visiora/shared';
 import { WorkItemsService } from './work-items.service';
 
+/** Les tests de ce fichier ne déplacent pas vers une colonne : le service de colonnes reste inerte. */
+const boardColumns = { findForMove: jest.fn(), resolver: jest.fn() };
+
+/**
+ * La synchronisation « statut d'un parent ⇄ ses enfants » a ses propres tests
+ * (en fin de fichier) : ailleurs, elle est neutralisée pour que chaque test
+ * n'ait à simuler que la règle qu'il vérifie.
+ */
+type WithSync = { syncParentStatus: (parentId: string | null) => Promise<void> };
+let syncParentStatus: jest.SpyInstance;
+beforeEach(() => {
+  syncParentStatus = jest
+    .spyOn(WorkItemsService.prototype as unknown as WithSync, 'syncParentStatus')
+    .mockResolvedValue(undefined);
+});
+afterEach(() => jest.restoreAllMocks());
+
 const USER_ONE = '11111111-1111-4111-8111-111111111111';
 const USER_TWO = '22222222-2222-4222-8222-222222222222';
 
@@ -22,6 +39,7 @@ describe('WorkItemsService — assignations multiples', () => {
     const service = new WorkItemsService(
       prisma as unknown as ConstructorParameters<typeof WorkItemsService>[0],
       ranking as unknown as ConstructorParameters<typeof WorkItemsService>[1],
+      boardColumns as unknown as ConstructorParameters<typeof WorkItemsService>[2],
     );
     jest.spyOn(service, 'getById').mockResolvedValue({} as WorkItemDetail);
 
@@ -72,6 +90,7 @@ describe('WorkItemsService — assignations multiples', () => {
     const service = new WorkItemsService(
       prisma as unknown as ConstructorParameters<typeof WorkItemsService>[0],
       {} as ConstructorParameters<typeof WorkItemsService>[1],
+      boardColumns as unknown as ConstructorParameters<typeof WorkItemsService>[2],
     );
     jest.spyOn(service, 'getById').mockResolvedValue({} as WorkItemDetail);
 
@@ -120,6 +139,7 @@ describe('WorkItemsService — fermeture en cascade', () => {
     const service = new WorkItemsService(
       prisma as unknown as ConstructorParameters<typeof WorkItemsService>[0],
       {} as ConstructorParameters<typeof WorkItemsService>[1],
+      boardColumns as unknown as ConstructorParameters<typeof WorkItemsService>[2],
     );
     jest.spyOn(service, 'getById').mockResolvedValue({} as WorkItemDetail);
 
@@ -147,6 +167,7 @@ describe('WorkItemsService — fermeture en cascade', () => {
     const service = new WorkItemsService(
       prisma as unknown as ConstructorParameters<typeof WorkItemsService>[0],
       {} as ConstructorParameters<typeof WorkItemsService>[1],
+      boardColumns as unknown as ConstructorParameters<typeof WorkItemsService>[2],
     );
     jest.spyOn(service, 'getById').mockResolvedValue({} as WorkItemDetail);
 
@@ -209,6 +230,7 @@ describe('WorkItemsService — fermeture en cascade', () => {
     const service = new WorkItemsService(
       prisma as unknown as ConstructorParameters<typeof WorkItemsService>[0],
       ranking as unknown as ConstructorParameters<typeof WorkItemsService>[1],
+      boardColumns as unknown as ConstructorParameters<typeof WorkItemsService>[2],
     );
 
     await service.move('project-1', 'story-1', { status: WorkItemStatus.DONE });
@@ -217,6 +239,8 @@ describe('WorkItemsService — fermeture en cascade', () => {
       where: { id: { in: ['subtask-1'] }, status: { not: WorkItemStatus.DONE } },
       data: { status: WorkItemStatus.DONE, closedAt: expect.any(Date) },
     });
+    // Le parent du ticket déplacé est resynchronisé (ici un Epic : sans effet).
+    expect(syncParentStatus).toHaveBeenCalledWith('epic-1');
   });
 });
 
@@ -270,6 +294,7 @@ describe('WorkItemsService — propagation Epic → Sprint', () => {
     const service = new WorkItemsService(
       prisma as unknown as ConstructorParameters<typeof WorkItemsService>[0],
       {} as ConstructorParameters<typeof WorkItemsService>[1],
+      boardColumns as unknown as ConstructorParameters<typeof WorkItemsService>[2],
     );
     jest.spyOn(service, 'getById').mockResolvedValue({} as WorkItemDetail);
 
@@ -300,6 +325,7 @@ describe('WorkItemsService — propagation Epic → Sprint', () => {
     const service = new WorkItemsService(
       prisma as unknown as ConstructorParameters<typeof WorkItemsService>[0],
       {} as ConstructorParameters<typeof WorkItemsService>[1],
+      boardColumns as unknown as ConstructorParameters<typeof WorkItemsService>[2],
     );
 
     await expect(
@@ -342,6 +368,7 @@ describe('WorkItemsService — propagation Epic → Sprint', () => {
     const service = new WorkItemsService(
       prisma as unknown as ConstructorParameters<typeof WorkItemsService>[0],
       {} as ConstructorParameters<typeof WorkItemsService>[1],
+      boardColumns as unknown as ConstructorParameters<typeof WorkItemsService>[2],
     );
     jest.spyOn(service, 'getById').mockResolvedValue({} as WorkItemDetail);
 
@@ -374,6 +401,7 @@ describe('WorkItemsService — propagation Epic → Sprint', () => {
     const service = new WorkItemsService(
       prisma as unknown as ConstructorParameters<typeof WorkItemsService>[0],
       {} as ConstructorParameters<typeof WorkItemsService>[1],
+      boardColumns as unknown as ConstructorParameters<typeof WorkItemsService>[2],
     );
     jest.spyOn(service, 'getById').mockResolvedValue({} as WorkItemDetail);
 
@@ -406,6 +434,7 @@ describe('WorkItemsService — heritage du sprint du parent', () => {
     const service = new WorkItemsService(
       prisma as unknown as ConstructorParameters<typeof WorkItemsService>[0],
       ranking as unknown as ConstructorParameters<typeof WorkItemsService>[1],
+      boardColumns as unknown as ConstructorParameters<typeof WorkItemsService>[2],
     );
     jest.spyOn(service, 'getById').mockResolvedValue({} as WorkItemDetail);
     return { service, prisma, tx };
@@ -509,6 +538,7 @@ describe('WorkItemsService — heritage du sprint du parent', () => {
     const service = new WorkItemsService(
       prisma as unknown as ConstructorParameters<typeof WorkItemsService>[0],
       ranking as unknown as ConstructorParameters<typeof WorkItemsService>[1],
+      boardColumns as unknown as ConstructorParameters<typeof WorkItemsService>[2],
     );
     jest.spyOn(service, 'getById').mockResolvedValue({} as WorkItemDetail);
     return { service, prisma, tx };
@@ -595,6 +625,7 @@ describe('WorkItemsService — renumerotation (reorder)', () => {
     const service = new WorkItemsService(
       prisma as unknown as ConstructorParameters<typeof WorkItemsService>[0],
       ranking as unknown as ConstructorParameters<typeof WorkItemsService>[1],
+      boardColumns as unknown as ConstructorParameters<typeof WorkItemsService>[2],
     );
 
     await service.move('project-1', 'item-1', { beforeId: 'before-1', afterId: 'after-1' });
@@ -612,5 +643,137 @@ describe('WorkItemsService — renumerotation (reorder)', () => {
       where: { id: 'sibling' },
       data: { number: 2 },
     });
+  });
+});
+
+describe('WorkItemsService — le statut d’un parent suit ses enfants', () => {
+  beforeEach(() => syncParentStatus.mockRestore());
+
+  type Parent = { type: WorkItemType; status: WorkItemStatus; parentId: string | null };
+
+  /** `parents` et `children` sont lus dans l'ordre des remontées successives. */
+  function serviceWith(parents: (Parent | null)[], children: WorkItemStatus[][]) {
+    const findFirst = jest.fn();
+    for (const parent of parents) findFirst.mockResolvedValueOnce(parent);
+    const findMany = jest.fn();
+    for (const statuses of children)
+      findMany.mockResolvedValueOnce(statuses.map((status) => ({ status })));
+    const tx = { workItem: { findFirst, findMany, update: jest.fn() } };
+    const prisma = {
+      $transaction: jest.fn((operation: (client: typeof tx) => unknown) => operation(tx)),
+    };
+    const service = new WorkItemsService(
+      prisma as unknown as ConstructorParameters<typeof WorkItemsService>[0],
+      {} as ConstructorParameters<typeof WorkItemsService>[1],
+      boardColumns as unknown as ConstructorParameters<typeof WorkItemsService>[2],
+    );
+    const sync = (id: string | null) => (service as unknown as WithSync).syncParentStatus(id);
+    return { tx, sync };
+  }
+  const story = (status: WorkItemStatus, parentId: string | null = null): Parent => ({
+    type: WorkItemType.STORY,
+    status,
+    parentId,
+  });
+  const epic = (status: WorkItemStatus): Parent => ({
+    type: WorkItemType.EPIC,
+    status,
+    parentId: null,
+  });
+
+  it('termine la Story quand sa dernière carte passe à « Terminé »', async () => {
+    const { tx, sync } = serviceWith(
+      [story(WorkItemStatus.IN_PROGRESS)],
+      [[WorkItemStatus.DONE, WorkItemStatus.DONE]],
+    );
+    await sync('story-1');
+
+    expect(tx.workItem.findMany.mock.calls[0][0].where.type).toEqual({
+      in: [WorkItemType.SUBTASK, WorkItemType.BUG],
+    });
+    expect(tx.workItem.update).toHaveBeenCalledWith({
+      where: { id: 'story-1' },
+      data: expect.objectContaining({
+        status: WorkItemStatus.DONE,
+        closedAt: expect.any(Date),
+        boardColumnId: null,
+      }),
+    });
+  });
+
+  it('rouvre la Story « En cours » quand une carte quitte « Terminé »', async () => {
+    const { tx, sync } = serviceWith(
+      [story(WorkItemStatus.DONE)],
+      [[WorkItemStatus.DONE, WorkItemStatus.IN_TEST]],
+    );
+    await sync('story-1');
+    expect(tx.workItem.update).toHaveBeenCalledWith({
+      where: { id: 'story-1' },
+      data: expect.objectContaining({ status: WorkItemStatus.IN_PROGRESS, closedAt: null }),
+    });
+  });
+
+  it('termine l’Epic quand toutes ses User Stories sont terminées', async () => {
+    const { tx, sync } = serviceWith(
+      [epic(WorkItemStatus.IN_PROGRESS)],
+      [[WorkItemStatus.DONE, WorkItemStatus.DONE]],
+    );
+    await sync('epic-1');
+
+    expect(tx.workItem.findMany.mock.calls[0][0].where.type).toEqual({ in: [WorkItemType.STORY] });
+    expect(tx.workItem.update).toHaveBeenCalledWith({
+      where: { id: 'epic-1' },
+      data: expect.objectContaining({ status: WorkItemStatus.DONE }),
+    });
+  });
+
+  it('fait remonter la règle en chaîne : dernière carte → Story terminée → Epic terminé', async () => {
+    const { tx, sync } = serviceWith(
+      [story(WorkItemStatus.IN_PROGRESS, 'epic-1'), epic(WorkItemStatus.IN_PROGRESS)],
+      [[WorkItemStatus.DONE], [WorkItemStatus.DONE, WorkItemStatus.DONE]],
+    );
+    await sync('story-1');
+
+    expect(
+      tx.workItem.update.mock.calls.map(([call]) => [call.where.id, call.data.status]),
+    ).toEqual([
+      ['story-1', WorkItemStatus.DONE],
+      ['epic-1', WorkItemStatus.DONE],
+    ]);
+  });
+
+  it('rouvre l’Epic terminé quand une de ses Stories repasse « En cours »', async () => {
+    const { tx, sync } = serviceWith(
+      [story(WorkItemStatus.DONE, 'epic-1'), epic(WorkItemStatus.DONE)],
+      [[WorkItemStatus.IN_PROGRESS], [WorkItemStatus.IN_PROGRESS, WorkItemStatus.DONE]],
+    );
+    await sync('story-1');
+
+    expect(
+      tx.workItem.update.mock.calls.map(([call]) => [call.where.id, call.data.status]),
+    ).toEqual([
+      ['story-1', WorkItemStatus.IN_PROGRESS],
+      ['epic-1', WorkItemStatus.IN_PROGRESS],
+    ]);
+  });
+
+  it('s’arrête dès qu’un parent ne change pas (l’Epic n’est pas relu)', async () => {
+    const { tx, sync } = serviceWith(
+      [story(WorkItemStatus.IN_TEST, 'epic-1')],
+      [[WorkItemStatus.IN_PROGRESS]],
+    );
+    await sync('story-1');
+    expect(tx.workItem.update).not.toHaveBeenCalled();
+    expect(tx.workItem.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignore les tickets sans enfants suivis (sous-tâche, bug)', async () => {
+    const { tx, sync } = serviceWith(
+      [{ type: WorkItemType.SUBTASK, status: WorkItemStatus.TODO, parentId: 'story-1' }],
+      [],
+    );
+    await sync('subtask-1');
+    expect(tx.workItem.findMany).not.toHaveBeenCalled();
+    expect(tx.workItem.update).not.toHaveBeenCalled();
   });
 });

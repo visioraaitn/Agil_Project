@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search } from 'lucide-react';
+import { ListFilter, Plus, Search } from 'lucide-react';
 import { ProjectStatus, type ProjectSummary } from '@visiora/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Select } from '@/components/ui/input';
 import { EmptyState, ErrorState, LoadingState } from '@/components/common/StateMessage';
+import { PageHeader } from '@/components/common/PageHeader';
+import { ProjectTile } from '@/components/common/ProjectTile';
 import { RoleBadge } from '@/components/common/RoleBadge';
 import { useAuth } from '@/features/auth/use-auth';
+import { cn } from '@/lib/utils';
 import { CreateProjectDialog } from '@/features/projects/components/CreateProjectDialog';
 import { useProjects } from '@/features/projects/hooks';
 
@@ -65,24 +67,39 @@ export function PortfolioPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="border-border-subtle flex shrink-0 flex-wrap items-center gap-3 border-b px-4 py-2">
-        <h1 className="text-ink-900 text-xl font-semibold">Portefeuille</h1>
-        {data && <span className="text-ink-400 text-sm">{data.total} projet(s)</span>}
+      <div className="shrink-0 space-y-3 px-4 pt-5 pb-4 sm:px-6">
+        <PageHeader
+          title="Portefeuille"
+          breadcrumbs={[{ label: 'visioPlanner' }, { label: 'Portefeuille' }]}
+          count={data ? `${data.total} projet${data.total > 1 ? 's' : ''}` : undefined}
+          actions={
+            isAdmin && (
+              <Button variant="primary" onClick={() => setDialogOpen(true)}>
+                <Plus strokeWidth={2.5} />
+                Nouveau projet
+              </Button>
+            )
+          }
+        />
 
-        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-          <div className="border-border-strong bg-surface focus-within:border-accent-500 flex h-7 w-56 items-center gap-1.5 rounded border px-2">
-            <Search className="text-ink-400 size-3.5 shrink-0" strokeWidth={2} />
+        <div className="card flex flex-wrap items-center gap-2 p-2.5">
+          <div className="relative w-full sm:w-64">
+            <Search
+              className="text-ink-400 pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
+              strokeWidth={2}
+            />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Filtrer les projets…"
               aria-label="Filtrer les projets"
-              className="text-ink-700 placeholder:text-ink-400 w-full bg-transparent text-base outline-none"
+              className="search-field"
             />
           </div>
-          <Select
+          <span className="bg-border-default mx-0.5 hidden h-6 w-px sm:block" aria-hidden="true" />
+          <select
             aria-label="Filtrer les projets par statut"
-            className="w-32"
+            className={cn('filter-select', status && 'is-active')}
             value={status}
             onChange={(event) => setStatus(event.target.value as ProjectStatus | '')}
           >
@@ -92,61 +109,65 @@ export function PortfolioPage() {
                 {STATUS_LABEL[value]}
               </option>
             ))}
-          </Select>
-          <Select
-            aria-label="Trier les projets"
-            className="w-32"
-            value={sortBy}
-            onChange={(event) => setSortBy(event.target.value as typeof sortBy)}
-          >
-            <option value="name">Nom</option>
-            <option value="company">Entreprise</option>
-            <option value="status">Statut</option>
-            <option value="memberCount">Membres</option>
-            <option value="startDate">Début</option>
-            <option value="targetDate">Échéance</option>
-          </Select>
-          <Select
-            aria-label="Sens du tri"
-            className="w-24"
-            value={sortOrder}
-            onChange={(event) => setSortOrder(event.target.value as typeof sortOrder)}
-          >
-            <option value="asc">Croissant</option>
-            <option value="desc">Décroissant</option>
-          </Select>
-          {isAdmin && (
-            <Button variant="primary" onClick={() => setDialogOpen(true)}>
-              <Plus className="size-3.5" strokeWidth={2.5} />
-              Nouveau projet
-            </Button>
-          )}
+          </select>
+          <div className="ml-auto flex items-center gap-2">
+            <div className="relative">
+              <ListFilter
+                className="text-ink-500 pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
+                strokeWidth={2}
+              />
+              <select
+                aria-label="Trier les projets"
+                value={sortBy}
+                onChange={(event) => setSortBy(event.target.value as typeof sortBy)}
+                className="bg-surface-sunken text-ink-700 hover:bg-border-subtle focus:border-accent-500 h-8 cursor-pointer appearance-none rounded-lg border border-transparent pr-3 pl-7.5 text-sm font-medium focus:outline-none"
+              >
+                <option value="name">Nom</option>
+                <option value="company">Entreprise</option>
+                <option value="status">Statut</option>
+                <option value="memberCount">Membres</option>
+                <option value="startDate">Début</option>
+                <option value="targetDate">Échéance</option>
+              </select>
+            </div>
+            <select
+              aria-label="Sens du tri"
+              className="filter-select"
+              value={sortOrder}
+              onChange={(event) => setSortOrder(event.target.value as typeof sortOrder)}
+            >
+              <option value="asc">Croissant</option>
+              <option value="desc">Décroissant</option>
+            </select>
+          </div>
         </div>
-      </header>
+      </div>
 
-      <div className="scrollbar-thin min-h-0 flex-1 overflow-auto">
-        {isLoading && <LoadingState />}
-        {error && <ErrorState error={error} />}
+      <div className="flex min-h-0 flex-1 flex-col px-4 pb-6 sm:px-6">
+        <div className="card scrollbar-thin max-h-full min-h-0 overflow-auto">
+          {isLoading && <LoadingState />}
+          {error && <ErrorState error={error} />}
 
-        {data && data.items.length === 0 && (
-          <EmptyState
-            title="Aucun projet"
-            description={
-              isAdmin
-                ? 'Créez un premier projet pour démarrer.'
-                : "Vous n'êtes membre d'aucun projet. Demandez à un administrateur de vous affecter."
-            }
-            action={
-              isAdmin ? (
-                <Button variant="primary" onClick={() => setDialogOpen(true)}>
-                  Créer un projet
-                </Button>
-              ) : undefined
-            }
-          />
-        )}
+          {data && data.items.length === 0 && (
+            <EmptyState
+              title="Aucun projet"
+              description={
+                isAdmin
+                  ? 'Créez un premier projet pour démarrer.'
+                  : "Vous n'êtes membre d'aucun projet. Demandez à un administrateur de vous affecter."
+              }
+              action={
+                isAdmin ? (
+                  <Button variant="primary" onClick={() => setDialogOpen(true)}>
+                    Créer un projet
+                  </Button>
+                ) : undefined
+              }
+            />
+          )}
 
-        {data && data.items.length > 0 && <ProjectTable projects={sortedProjects} />}
+          {data && data.items.length > 0 && <ProjectTable projects={sortedProjects} />}
+        </div>
       </div>
 
       <CreateProjectDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />
@@ -156,54 +177,58 @@ export function PortfolioPage() {
 
 function ProjectTable({ projects }: { projects: ProjectSummary[] }) {
   return (
-    <table className="w-full border-collapse text-base">
-      <thead className="bg-surface-muted text-ink-500 sticky top-0 text-left text-sm">
+    <table className="w-full min-w-[900px] border-collapse text-base">
+      <thead className="bg-surface-muted text-ink-500 sticky top-0 z-10 text-left text-[11px] tracking-wider uppercase">
         <tr className="border-border-default border-b">
-          <th className="px-4 py-1.5 font-semibold">Projet</th>
-          <th className="px-3 py-1.5 font-semibold">Entreprise</th>
-          <th className="px-3 py-1.5 font-semibold">Statut</th>
-          <th className="px-3 py-1.5 font-semibold">Mon rôle</th>
-          <th className="px-3 py-1.5 font-semibold">Membres</th>
-          <th className="px-3 py-1.5 font-semibold">Début</th>
-          <th className="px-3 py-1.5 font-semibold">Échéance</th>
+          <th className="px-5 py-3 font-semibold">Projet</th>
+          <th className="px-3 py-3 font-semibold">Entreprise</th>
+          <th className="px-3 py-3 font-semibold">Statut</th>
+          <th className="px-3 py-3 font-semibold">Mon rôle</th>
+          <th className="px-3 py-3 text-right font-semibold">Membres</th>
+          <th className="px-3 py-3 font-semibold">Début</th>
+          <th className="px-5 py-3 font-semibold">Échéance</th>
         </tr>
       </thead>
       <tbody>
         {projects.map((project) => (
-          <tr key={project.id} className="border-border-subtle hover:bg-surface-muted border-b">
-            <td className="px-4 py-1.5">
+          <tr
+            key={project.id}
+            className="border-border-subtle hover:bg-surface-muted border-b last:border-b-0"
+          >
+            <td className="px-5 py-3">
               <Link
                 to={`/projects/${project.key}/overview`}
-                className="flex items-center gap-2 font-semibold"
+                className="group flex items-center gap-3"
               >
-                <span
-                  className="flex size-5 shrink-0 items-center justify-center rounded text-xs font-bold text-white"
-                  style={{ backgroundColor: project.color ?? '#0078D4' }}
-                >
-                  {project.key.slice(0, 2)}
+                <ProjectTile project={project} />
+                <span className="min-w-0">
+                  <span className="text-ink-900 group-hover:text-accent-700 block truncate font-semibold">
+                    {project.name}
+                  </span>
+                  <span className="text-ink-500 block font-mono text-[11px]">{project.key}</span>
                 </span>
-                <span className="text-accent-700 hover:underline">{project.name}</span>
-                <span className="text-ink-400 font-normal">{project.key}</span>
               </Link>
             </td>
-            <td className="text-ink-500 px-3 py-1.5">{project.company ?? '—'}</td>
-            <td className="px-3 py-1.5">
-              <Badge tone={STATUS_TONE[project.effectiveStatus]}>
+            <td className="text-ink-700 px-3 py-3">{project.company ?? '—'}</td>
+            <td className="px-3 py-3">
+              <Badge tone={STATUS_TONE[project.effectiveStatus]} dot>
                 {project.effectiveStatus === ProjectStatus.ACTIVE && project.activeSprint
                   ? `En cours · ${project.activeSprint.name}`
                   : STATUS_LABEL[project.effectiveStatus]}
               </Badge>
             </td>
-            <td className="px-3 py-1.5">
+            <td className="px-3 py-3">
               {project.currentUserRole ? (
                 <RoleBadge role={project.currentUserRole} />
               ) : (
-                <span className="text-ink-400 text-sm">non membre</span>
+                <span className="text-ink-500 text-sm">non membre</span>
               )}
             </td>
-            <td className="text-ink-500 px-3 py-1.5">{project.memberCount}</td>
-            <td className="text-ink-500 px-3 py-1.5">{formatDate(project.startDate)}</td>
-            <td className="text-ink-500 px-3 py-1.5">{formatDate(project.targetDate)}</td>
+            <td className="text-ink-900 px-3 py-3 text-right font-semibold tabular-nums">
+              {project.memberCount}
+            </td>
+            <td className="text-ink-700 px-3 py-3">{formatDate(project.startDate)}</td>
+            <td className="text-ink-700 px-5 py-3">{formatDate(project.targetDate)}</td>
           </tr>
         ))}
       </tbody>

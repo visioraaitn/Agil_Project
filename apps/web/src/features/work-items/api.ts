@@ -1,11 +1,13 @@
 import type {
   BacklogNode,
   BoardColumn,
+  BoardColumnConfig,
   CreateLabelInput,
   CreateTagInput,
   CreateWorkItemInput,
   LabelSummary,
   MoveWorkItemInput,
+  SaveBoardColumnsInput,
   TagSummary,
   UpdateLabelInput,
   UpdateTagInput,
@@ -51,6 +53,10 @@ export const workItemsApi = {
 
   update: (projectRef: string, itemId: string, input: UpdateWorkItemInput) =>
     api.patch<WorkItemDetail>(`/projects/${projectRef}/work-items/${itemId}`, input),
+
+  /** Board : configuration des colonnes, remplacée en bloc (ordre = ordre du tableau). */
+  saveBoardColumns: (projectRef: string, input: SaveBoardColumnsInput) =>
+    api.put<BoardColumnConfig[]>(`/projects/${projectRef}/board/columns`, input),
 
   /** Board : changement de colonne et de position. */
   move: (projectRef: string, itemId: string, input: MoveWorkItemInput) =>

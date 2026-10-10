@@ -105,10 +105,19 @@ Lire en début de session : [`docs/01-architecture-et-plan.md`](docs/01-architec
 ## Règles des tickets (phase 2)
 
 - **Hiérarchie contrainte par `ALLOWED_PARENT_TYPES`** (dans `@visiora/shared`) :
-  EPIC racine · STORY et BUG sous un EPIC ou racine · SUBTASK obligatoirement sous STORY ou BUG.
+  EPIC racine · STORY sous un EPIC ou racine · SUBTASK **et BUG** obligatoirement sous une STORY.
   Le service refuse tout rattachement hors table et détecte les cycles.
-- **Les epics ne vont pas sur le board** : ils ne sont pas du travail réalisable. Le board
-  ne montre que STORY, BUG et SUBTASK.
+- **Task Board (façon Azure DevOps)** : la colonne **Work Items** porte un EPIC ou une STORY par
+  ligne ; les colonnes du workflow ne portent que des **SUBTASK et BUG** (`GET /board` ne renvoie
+  qu'eux). Lignes = tickets du sprint + parents des cartes visibles (+ l'Epic de regroupement en vue
+  Hiérarchie). « + Sous-tâche / Bug » en bas à gauche de la cellule « À faire » des lignes STORY
+  uniquement (jamais sur un EPIC). Icône des sous-tâches : `SubtaskIcon`, jeton `--color-subtask`.
+- **Le statut d'un parent suit ses enfants** (`deriveParentStatus` + `STATUS_ROLLUP_CHILD_TYPES`,
+  partagés ; appliqués par `WorkItemsService.syncParentStatus` après création, modification,
+  déplacement ou suppression d'un enfant) : une STORY suit ses SUBTASK/BUG, un EPIC ses STORY, en
+  chaîne (carte → Story → Epic). Tous terminés → DONE ; un enfant non terminé sous un parent DONE →
+  IN_PROGRESS ; un enfant engagé sous un parent TODO → IN_PROGRESS. Un statut posé à la main
+  n'est pas écrasé tant qu'aucun enfant ne bouge.
 - **Un epic n'est pas estimé** : son `rolledUpPoints` est la somme de ses descendants.
 - **Étiquettes et critères d'acceptation se remplacent en bloc** (`labelIds`,
   `acceptanceCriteria` dans le PATCH) : le client envoie l'état voulu, pas un diff.
@@ -118,6 +127,22 @@ Lire en début de session : [`docs/01-architecture-et-plan.md`](docs/01-architec
 - **Suppression = soft delete en cascade** sur toute la descendance.
 - Le glisser-déposer du backlog reprioorise **entre frères uniquement** ; changer de parent
   se fait explicitement avec le sélecteur « Epic / parent » à la création ou dans le détail.
+- **Colonnes du board persistées** (`BoardColumn`, par projet) : 5 colonnes par défaut
+  (une par statut, non supprimables, créées au premier accès) + colonnes personnalisées
+  rattachées à un statut. Le workflow reste `WorkItem.status` ; `WorkItem.boardColumnId`
+  ne sert qu'à l'affichage. **Une carte = une seule colonne** : sa colonne perso si elle
+  porte encore son statut, sinon la colonne par défaut du statut (`BoardColumnsService.resolver`).
+- Le board se déplace **par `columnId`**, jamais par statut (deux colonnes peuvent partager
+  un statut). Un changement de statut hors board remet `boardColumnId` à `null`.
+- Configuration des colonnes (ordre, noms, WIP, visibilité, ajouts) : `PUT …/board/columns`,
+  remplacement en bloc, permission **`board:configure`** (Project Lead).
+- Tous les couloirs du board passent par `BoardGrid` et `buildBoardRows` (`board/hierarchy.ts`) ;
+  un couloir regroupe des **lignes**, qui emportent leurs sous-tâches.
+- **Dates de sprint** (règles partagées `startOfUtcDay`, `sprintPeriodsOverlap`, appliquées par
+  `SprintsService`) : début ≥ aujourd'hui (UTC) ; en modification, seules les dates **changées**
+  sont contrôlées (un sprint actif garde son début passé) ; aucun jour partagé avec un autre
+  sprint du projet, **quel que soit son statut**. Codes `SPRINT_START_IN_PAST`,
+  `SPRINT_END_IN_PAST`, `SPRINT_DATES_OVERLAP`. Création et modification partagent `SprintFormDialog`.
 
 ## Conventions front (phase 1)
 
@@ -134,6 +159,19 @@ Lire en début de session : [`docs/01-architecture-et-plan.md`](docs/01-architec
   d'une carte est appliqué au cache TanStack Query **avant** la réponse serveur, sinon la carte
   reviendrait visiblement à sa place le temps de l'aller-retour ; `onError` restaure l'état.
 
+## Système visuel (refonte visioPlanner)
+
+- **Jetons dans `apps/web/src/styles/globals.css`** : toile `bg-canvas` gris chaud, contenus
+  posés sur des cartes (classe `.card`), couleurs de statut `--color-status-*`, polices Inter et
+  JetBrains Mono **auto-hébergées** via `@fontsource` (la CSP de prod interdit Google Fonts).
+- `dark:` suit la classe `.dark` posée par `useTheme` (`@custom-variant dark`), pas l'OS.
+- En-tête de page : **`PageHeader`** (fil d'Ariane, titre, pastille de compteur, actions) ;
+  fil d'Ariane projet via `useProjectCrumbs(projectKey, 'Page')`.
+- Briques partagées : `StatusPill` (puce + teinte par statut), `PriorityBadge` (drapeau,
+  variante `pill` ou `text`), `TicketKey` (clé en mono), `StoryPoints`, `TypeIcon boxed`,
+  `ProjectTile`, `BrandLogo`. Filtres en `.filter-select` (pilule pointillée), recherche en
+  `.search-field`. Ne pas réintroduire de `rounded border` à l'ancienne sur les panneaux.
+
 ## Surface API livrée
 
 ```
@@ -149,10 +187,11 @@ GET|POST /projects/:projectId/members
 PATCH|DELETE /projects/:projectId/members/:userId
 
 GET    /projects/:projectId/backlog             (arbre Epic > Story > Sous-tâche)
-GET    /projects/:projectId/board               (5 colonnes, epics exclus)
+GET    /projects/:projectId/board               (colonnes configurées, epics exclus)
+GET|PUT /projects/:projectId/board/columns      (ordre, noms, WIP, visibilité — PUT = board:configure)
 POST   /projects/:projectId/work-items
 GET|PATCH|DELETE /projects/:projectId/work-items/:itemId
-POST   /projects/:projectId/work-items/:itemId/move      (board : statut + position)
+POST   /projects/:projectId/work-items/:itemId/move      (board : columnId + position)
 POST   /projects/:projectId/work-items/:itemId/reorder   (backlog : position entre frères)
 GET|POST /projects/:projectId/labels
 PATCH|DELETE /projects/:projectId/labels/:labelId

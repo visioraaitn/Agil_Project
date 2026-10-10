@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   BoardColumn,
+  BoardColumnConfig,
+  SaveBoardColumnsInput,
   CreateLabelInput,
   CreateTagInput,
   CreateWorkItemInput,
@@ -110,7 +112,7 @@ export function useMoveWorkItem(projectRef: string, filters: WorkItemFilters) {
       await queryClient.cancelQueries({ queryKey: key });
       const previous = queryClient.getQueryData<BoardColumn[]>(key);
 
-      if (previous && input.status) {
+      if (previous && input.columnId) {
         queryClient.setQueryData<BoardColumn[]>(key, moveCardInCache(previous, itemId, input));
       }
 
@@ -125,21 +127,30 @@ export function useMoveWorkItem(projectRef: string, filters: WorkItemFilters) {
   });
 }
 
-/** Recompose les colonnes en déplaçant une carte, pour l'affichage optimiste. */
+/**
+ * Recompose les colonnes en déplaçant une carte, pour l'affichage optimiste.
+ * La cible est désignée par son identifiant de colonne, jamais par son statut :
+ * plusieurs colonnes peuvent partager un statut, la carte n'en rejoint qu'une.
+ */
 function moveCardInCache(
   columns: BoardColumn[],
   itemId: string,
   input: MoveWorkItemInput,
 ): BoardColumn[] {
   const card = columns.flatMap((column) => column.items).find((item) => item.id === itemId);
-  if (!card || !input.status) return columns;
+  const target = columns.find((column) => column.id === input.columnId);
+  if (!card || !target) return columns;
 
-  const moved = { ...card, status: input.status };
+  const moved = {
+    ...card,
+    status: target.status,
+    boardColumnId: target.isDefault ? null : target.id,
+  };
 
   return columns.map((column) => {
     const withoutCard = column.items.filter((item) => item.id !== itemId);
 
-    if (column.status !== input.status) {
+    if (column.id !== target.id) {
       return recount({ ...column, items: withoutCard });
     }
 
@@ -159,6 +170,68 @@ function recount(column: BoardColumn): BoardColumn {
     ...column,
     count: column.items.length,
     points: column.items.reduce((total, item) => total + (item.storyPoints ?? 0), 0),
+  };
+}
+
+/**
+ * D.1 · Enregistre la configuration des colonnes (ordre, noms, WIP, visibilité,
+ * ajouts). L'ordre est appliqué tout de suite à tous les boards en cache du
+ * projet, pour que le glisser-déposer d'une colonne ne « saute » pas en
+ * attendant la réponse ; `onError` restaure l'état précédent.
+ */
+export function useSaveBoardColumns(projectRef: string) {
+  const queryClient = useQueryClient();
+  const boardsKey = ['projects', projectRef, 'board'];
+
+  return useMutation({
+    mutationFn: (input: SaveBoardColumnsInput) => workItemsApi.saveBoardColumns(projectRef, input),
+
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: boardsKey });
+      const previous = queryClient.getQueriesData<BoardColumn[]>({ queryKey: boardsKey });
+      const order = input.columns.map((column) => column.id);
+
+      queryClient.setQueriesData<BoardColumn[]>({ queryKey: boardsKey }, (columns) => {
+        if (!columns) return columns;
+        // Seules les colonnes existantes se réordonnent ici ; les ajouts arrivent avec le serveur.
+        return [...columns]
+          .filter((column) => order.includes(column.id))
+          .sort((left, right) => order.indexOf(left.id) - order.indexOf(right.id))
+          .map((column, position) => {
+            const sent = input.columns.find((entry) => entry.id === column.id);
+            return sent
+              ? {
+                  ...column,
+                  position,
+                  name: sent.name,
+                  wipLimit: sent.wipLimit ?? null,
+                  isVisible: sent.isVisible,
+                }
+              : column;
+          });
+      });
+
+      return { previous };
+    },
+
+    onError: (_error, _input, context) => {
+      for (const [key, data] of context?.previous ?? []) queryClient.setQueryData(key, data);
+    },
+
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['projects', projectRef] }),
+  });
+}
+
+/** Configuration complète à renvoyer au serveur, à partir des colonnes affichées. */
+export function toBoardColumnsInput(columns: BoardColumnConfig[]): SaveBoardColumnsInput {
+  return {
+    columns: columns.map((column) => ({
+      id: column.id,
+      name: column.name,
+      status: column.status,
+      wipLimit: column.wipLimit,
+      isVisible: column.isVisible,
+    })),
   };
 }
 

@@ -3,7 +3,6 @@ import { Prisma } from '@prisma/client';
 import {
   BacklogNode,
   BoardColumn,
-  BOARD_COLUMNS,
   CreateWorkItemInput,
   MoveWorkItemInput,
   UpdateWorkItemInput,
@@ -13,10 +12,14 @@ import {
   WorkItemSummary,
   WorkItemSortBy,
   WorkItemType,
+  BOARD_CARD_TYPES,
+  STATUS_ROLLUP_CHILD_TYPES,
   canBeChildOf,
+  deriveParentStatus,
   REQUIRES_PARENT,
 } from '@visiora/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { BoardColumnsService } from './board-columns.service';
 import { RankingService } from './ranking.service';
 import { renumberSiblings } from './work-item-numbering';
 import {
@@ -35,6 +38,7 @@ export class WorkItemsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ranking: RankingService,
+    private readonly boardColumns: BoardColumnsService,
   ) {}
 
   // --- Lecture ------------------------------------------------------------
@@ -73,25 +77,40 @@ export class WorkItemsService {
     return roots;
   }
 
-  /** D.1 · Board : les tickets répartis dans les 5 colonnes de statut. */
+  /**
+   * D.1 · Task Board : sous-tâches et bugs répartis dans les colonnes configurées du projet,
+   * dans leur ordre d'affichage. Chaque ticket est résolu vers UNE seule
+   * colonne (voir BoardColumnsService), y compris quand plusieurs colonnes
+   * partagent un même statut.
+   */
   async getBoard(projectId: string, filters: WorkItemFilters): Promise<BoardColumn[]> {
-    const rows = await this.prisma.workItem.findMany({
-      where: {
-        ...this.buildWhere(projectId, filters),
-        // Le board suit le travail réalisable : les epics restent au backlog.
-        type: filters.type ?? { in: [WorkItemType.STORY, WorkItemType.BUG, WorkItemType.SUBTASK] },
-      },
-      select: WORK_ITEM_SUMMARY_SELECT,
-      orderBy: this.buildOrderBy(filters, 'board'),
-    });
+    const [rows, resolver] = await Promise.all([
+      this.prisma.workItem.findMany({
+        where: {
+          ...this.buildWhere(projectId, filters),
+          // Task Board : les cartes sont les sous-tâches et les bugs ; leurs
+          // User Stories (et les Epics qui les regroupent) forment les lignes.
+          type: { in: [...BOARD_CARD_TYPES] },
+        },
+        select: WORK_ITEM_SUMMARY_SELECT,
+        orderBy: this.buildOrderBy(filters, 'board'),
+      }),
+      this.boardColumns.resolver(projectId),
+    ]);
 
     const aggregates = this.computeAggregates(rows);
-    const items = rows.map((row) => toWorkItemSummary(row, aggregates.get(row.id)));
+    const itemsByColumn = new Map<string, WorkItemSummary[]>(
+      resolver.columns.map((column) => [column.id, []]),
+    );
+    for (const row of rows) {
+      const item = toWorkItemSummary(row, aggregates.get(row.id));
+      itemsByColumn.get(resolver.resolve(item).id)?.push(item);
+    }
 
-    return BOARD_COLUMNS.map((status) => {
-      const columnItems = items.filter((item) => item.status === status);
+    return resolver.columns.map((column) => {
+      const columnItems = itemsByColumn.get(column.id) ?? [];
       return {
-        status,
+        ...column,
         items: columnItems,
         count: columnItems.length,
         points: columnItems.reduce((total, item) => total + (item.storyPoints ?? 0), 0),
@@ -195,6 +214,7 @@ export class WorkItemsService {
       });
     });
 
+    await this.syncParentStatus(input.parentId ?? null);
     return this.getById(projectId, created.id);
   }
 
@@ -291,6 +311,11 @@ export class WorkItemsService {
               }
             : {}),
           ...(inheritedSprintId ? { sprintId: inheritedSprintId } : {}),
+          // Un changement de statut hors board (détail, PR…) ramène le ticket
+          // dans la colonne par défaut de son nouveau statut.
+          ...(input.status !== undefined && input.status !== existing.status
+            ? { boardColumnId: null }
+            : {}),
           ...(closesNow ? { closedAt: new Date() } : {}),
           ...(reopens ? { closedAt: null } : {}),
         },
@@ -365,6 +390,11 @@ export class WorkItemsService {
     if (changesParent) await this.numberedTransaction(updateInTransaction);
     else await this.prisma.$transaction(updateInTransaction);
 
+    if (input.status !== undefined || changesParent) {
+      await this.syncParentStatus(existing.parentId);
+      if (changesParent) await this.syncParentStatus(targetParentId);
+    }
+
     return this.getById(projectId, itemId);
   }
 
@@ -402,15 +432,30 @@ export class WorkItemsService {
     const data: Prisma.WorkItemUpdateInput = {};
     let closesNow = false;
 
+    // La colonne de destination fixe le statut ; une colonne par défaut se
+    // traduit par `boardColumnId = null` (le statut suffit à la retrouver).
+    const targetColumn = input.columnId
+      ? await this.boardColumns.findForMove(projectId, input.columnId)
+      : null;
+    const requestedStatus = targetColumn?.status ?? input.status;
+
     // Déplacement de colonne : on recalcule le rang board.
-    if (input.status !== undefined || input.beforeId !== undefined || input.afterId !== undefined) {
-      const targetStatus = input.status ?? (item.status as WorkItemStatus);
-      const isBoardMove = input.status !== undefined;
+    if (
+      requestedStatus !== undefined ||
+      input.beforeId !== undefined ||
+      input.afterId !== undefined
+    ) {
+      const targetStatus = requestedStatus ?? (item.status as WorkItemStatus);
+      const isBoardMove = requestedStatus !== undefined;
 
       if (isBoardMove) {
         closesNow = targetStatus === WorkItemStatus.DONE && item.status !== WorkItemStatus.DONE;
         data.status = targetStatus;
         data.closedAt = targetStatus === WorkItemStatus.DONE ? new Date() : null;
+        data.boardColumn =
+          targetColumn && !targetColumn.isDefault
+            ? { connect: { id: targetColumn.id } }
+            : { disconnect: true };
         data.boardRank = await this.ranking.computeRank(
           'boardRank',
           { beforeId: input.beforeId, afterId: input.afterId },
@@ -428,7 +473,7 @@ export class WorkItemsService {
     if (changesParent) {
       data.parent = targetParentId ? { connect: { id: targetParentId } } : { disconnect: true };
       // Nouveau voisinage : si aucune position n'a été calculée, on place en fin.
-      if (data.rank === undefined && !input.status) {
+      if (data.rank === undefined && requestedStatus === undefined) {
         data.rank = await this.ranking.computeRank(
           'rank',
           {},
@@ -481,6 +526,11 @@ export class WorkItemsService {
       await this.prisma.workItem.update({ where: { id: itemId }, data });
     }
 
+    if (requestedStatus !== undefined || changesParent) {
+      await this.syncParentStatus(item.parentId);
+      if (changesParent) await this.syncParentStatus(targetParentId);
+    }
+
     const row = await this.prisma.workItem.findUniqueOrThrow({
       where: { id: itemId },
       select: WORK_ITEM_SUMMARY_SELECT,
@@ -504,9 +554,55 @@ export class WorkItemsService {
       });
       await renumberSiblings(tx, projectId, item.type, item.parentId);
     });
+    await this.syncParentStatus(item.parentId);
   }
 
   // --- Règles et utilitaires ---------------------------------------------
+
+  /**
+   * D.1 · Le statut d'un parent suit ses enfants — voir `deriveParentStatus` :
+   * une User Story suit ses cartes (sous-tâches et bugs), un Epic ses User
+   * Stories. Appelé après chaque création, modification, déplacement ou
+   * suppression d'un enfant ; un parent qui change à son tour fait remonter la
+   * règle à son propre parent (carte → Story → Epic). Un statut posé à la main
+   * n'est jamais écrasé tant qu'aucun enfant ne bouge.
+   */
+  private async syncParentStatus(parentId: string | null): Promise<void> {
+    if (!parentId) return;
+    const grandParentId = await this.prisma.$transaction(async (tx) => {
+      const parent = await tx.workItem.findFirst({
+        where: { id: parentId, deletedAt: null },
+        select: { type: true, status: true, parentId: true },
+      });
+      const childTypes = parent
+        ? STATUS_ROLLUP_CHILD_TYPES[parent.type as WorkItemType]
+        : undefined;
+      if (!parent || !childTypes) return null;
+
+      const children = await tx.workItem.findMany({
+        where: { parentId, deletedAt: null, type: { in: [...childTypes] } },
+        select: { status: true },
+      });
+      const target = deriveParentStatus(
+        parent.status as WorkItemStatus,
+        children.map((child) => child.status as WorkItemStatus),
+      );
+      if (!target) return null;
+
+      await tx.workItem.update({
+        where: { id: parentId },
+        data: {
+          status: target,
+          closedAt: target === WorkItemStatus.DONE ? new Date() : null,
+          // Statut changé hors board : le ticket retrouve la colonne par défaut.
+          boardColumnId: null,
+        },
+      });
+      return parent.parentId;
+    });
+    // Le parent a changé : son propre parent (l'Epic d'une Story) suit à son tour.
+    if (grandParentId) await this.syncParentStatus(grandParentId);
+  }
 
   private buildWhere(projectId: string, filters: WorkItemFilters): Prisma.WorkItemWhereInput {
     const compoundFilters: Prisma.WorkItemWhereInput[] = [];
@@ -622,7 +718,7 @@ export class WorkItemsService {
       if (REQUIRES_PARENT.includes(type)) {
         throw new BadRequestException({
           code: 'PARENT_REQUIRED',
-          message: 'Une sous-tâche doit être rattachée à une user story ou à un bug',
+          message: 'Une sous-tâche ou un bug doit être rattaché à une user story',
         });
       }
       return;

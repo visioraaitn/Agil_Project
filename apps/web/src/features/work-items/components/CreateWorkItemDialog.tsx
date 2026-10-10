@@ -33,6 +33,8 @@ interface CreateWorkItemDialogProps {
   defaultParentId?: string | null;
   defaultStatus?: WorkItemStatus;
   defaultSprintId?: string | null;
+  /** Types proposés (ex. enfants autorisés sous le parent présélectionné). Tous par défaut. */
+  allowedTypes?: readonly WorkItemType[];
 }
 
 export function CreateWorkItemDialog({
@@ -44,6 +46,7 @@ export function CreateWorkItemDialog({
   defaultParentId = null,
   defaultStatus,
   defaultSprintId,
+  allowedTypes = Object.values(WorkItemType),
 }: CreateWorkItemDialogProps) {
   const createItem = useCreateWorkItem(projectRef);
   const { data: members } = useProjectMembers(projectRef);
@@ -65,6 +68,7 @@ export function CreateWorkItemDialog({
   const allowedParents = ALLOWED_PARENT_TYPES[form.type];
   const parentOptions = flatten(candidates).filter((node) => allowedParents.includes(node.type));
   const parentRequired = REQUIRES_PARENT.includes(form.type);
+  const presetParent = flatten(candidates).find((node) => node.id === defaultParentId);
 
   const submit = async () => {
     setSubmitError(null);
@@ -96,7 +100,7 @@ export function CreateWorkItemDialog({
   return (
     <Modal
       open={open}
-      title="Nouveau ticket"
+      title={presetParent ? `Nouveau ticket sous ${presetParent.key}` : 'Nouveau ticket'}
       onClose={onClose}
       footer={
         <>
@@ -118,16 +122,20 @@ export function CreateWorkItemDialog({
             <Select
               id="new-type"
               value={form.type}
-              onChange={(event) =>
-                // Changer de type peut invalider le parent choisi : on le remet à zéro.
+              onChange={(event) => {
+                // Changer de type peut invalider le parent choisi : on ne le garde
+                // que s'il reste un parent autorisé pour le nouveau type.
+                const type = event.target.value as WorkItemType;
+                const parent = flatten(candidates).find((node) => node.id === form.parentId);
                 setForm({
                   ...form,
-                  type: event.target.value as WorkItemType,
-                  parentId: '',
-                })
-              }
+                  type,
+                  parentId:
+                    parent && ALLOWED_PARENT_TYPES[type].includes(parent.type) ? parent.id : '',
+                });
+              }}
             >
-              {Object.values(WorkItemType).map((type) => (
+              {allowedTypes.map((type) => (
                 <option key={type} value={type}>
                   {LABELS_FR.workItemType[type]}
                 </option>
@@ -167,7 +175,7 @@ export function CreateWorkItemDialog({
             required={parentRequired}
             hint={
               parentRequired
-                ? 'Une sous-tâche doit appartenir à une user story ou à un bug.'
+                ? 'Une sous-tâche ou un bug appartient à une user story.'
                 : 'Laisser vide pour un ticket de premier niveau.'
             }
           >

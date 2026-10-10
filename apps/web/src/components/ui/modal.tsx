@@ -26,7 +26,7 @@ export function Modal({ open, title, onClose, children, footer, width = 'sm' }: 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 p-8"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/35 p-4 backdrop-blur-[2px] sm:p-8"
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -36,24 +36,24 @@ export function Modal({ open, title, onClose, children, footer, width = 'sm' }: 
     >
       <div
         className={cn(
-          'bg-surface border-border-default mt-12 flex w-full flex-col rounded border shadow-lg',
+          'bg-surface border-border-default mt-10 flex w-full flex-col rounded-xl border shadow-pop',
           width === 'sm' ? 'max-w-md' : 'max-w-2xl',
         )}
       >
-        <header className="border-border-subtle flex items-center justify-between border-b px-3 py-2">
-          <h2 className="text-ink-900 text-lg font-semibold">{title}</h2>
+        <header className="border-border-subtle flex items-center justify-between border-b px-5 py-3.5">
+          <h2 className="text-ink-900 text-lg font-bold">{title}</h2>
           <button
             type="button"
             onClick={onClose}
-            className="text-ink-500 hover:bg-surface-sunken rounded p-1"
+            className="text-ink-500 hover:bg-surface-sunken hover:text-ink-900 rounded-md p-1"
             aria-label="Fermer"
           >
-            <X className="size-4" strokeWidth={1.75} />
+            <X className="size-4" strokeWidth={2} />
           </button>
         </header>
-        <div className="max-h-[70vh] overflow-y-auto px-3 py-3">{children}</div>
+        <div className="max-h-[70vh] overflow-y-auto px-5 py-4">{children}</div>
         {footer && (
-          <footer className="border-border-subtle flex justify-end gap-2 border-t px-3 py-2">
+          <footer className="border-border-subtle bg-surface-muted flex justify-end gap-2 rounded-b-xl border-t px-5 py-3">
             {footer}
           </footer>
         )}

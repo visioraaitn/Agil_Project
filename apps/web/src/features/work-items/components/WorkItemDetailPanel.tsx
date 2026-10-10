@@ -319,7 +319,9 @@ function DetailBody({
               label="Epic / parent"
               htmlFor="wi-parent"
               required={parentRequired}
-              hint={parentRequired ? 'Le parent est obligatoire pour une sous-tache.' : undefined}
+              hint={
+                parentRequired ? 'Une sous-tâche ou un bug appartient à une user story.' : undefined
+              }
             >
               <Select
                 id="wi-parent"

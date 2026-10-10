@@ -1,0 +1,633 @@
+/*
+ * Animation du panneau de connexion — 12 s, en boucle.
+ *
+ *  0–20 %  Le désordre      : cartes éparpillées et de travers, hors du board.
+ * 16–42 %  L'organisation   : les colonnes se dessinent, les cartes rejoignent
+ *                             leur place une à une, le sprint passe à 40 %.
+ * 42–64 %  Le flux          : un curseur saisit une carte « À faire », elle se
+ *                             soulève, un emplacement bleu apparaît dans
+ *                             « En cours », elle s'y pose ; sprint à 60 %.
+ * 66–82 %  La validation    : la carte rejoint « Terminé », bordure verte,
+ *                             pastille ✓, sprint à 80 %.
+ * 86–96 %  Tout s'efface, puis le cycle recommence.
+ *
+ * Positions en % de la scène (rapport 520 × 360). Sans animation (préférence
+ * « réduire les animations »), la scène s'affiche dans son état final rangé.
+ */
+
+.lba-stage {
+  --lba-card-w: 25%;
+  --lba-card-h: 17%;
+  /* Colonnes et emplacements des cartes. */
+  --lba-col-1: 7.5%;
+  --lba-col-2: 37.5%;
+  --lba-col-3: 67.5%;
+  --lba-row-1: 28%;
+  --lba-row-2: 48%;
+  --lba-shadow: 0 1px 2px rgb(28 27 26 / 0.08), 0 1px 1px rgb(28 27 26 / 0.04);
+  --lba-shadow-lifted: 0 18px 30px -10px rgb(0 40 90 / 0.45), 0 6px 12px rgb(0 40 90 / 0.18);
+  --lba-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  position: relative;
+  width: 100%;
+  max-width: 34rem;
+  aspect-ratio: 520 / 360;
+}
+
+.lba-scene {
+  position: absolute;
+  inset: 0;
+}
+
+/* --- Décor : cadre, board, en-tête de sprint, colonnes ------------------- */
+
+.lba-frame {
+  position: absolute;
+  inset: 0;
+  border-radius: 1rem;
+  background: rgb(255 255 255 / 0.15);
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+}
+
+.lba-board {
+  position: absolute;
+  inset: 3%;
+  border-radius: 0.75rem;
+  background: var(--color-canvas);
+}
+
+.lba-header {
+  position: absolute;
+  top: 7%;
+  left: 7.5%;
+  right: 7.5%;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.lba-track {
+  position: relative;
+  flex: 1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-border-default);
+}
+
+.lba-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 80%;
+  border-radius: 999px;
+  background: var(--color-accent-500);
+}
+
+.lba-pct {
+  position: relative;
+  width: 2.2rem;
+  height: 1em;
+  text-align: right;
+}
+
+.lba-pct > span {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+
+.lba-pct > .lba-pct-80 {
+  opacity: 1;
+}
+
+.lba-col {
+  position: absolute;
+  top: 19%;
+  width: 29%;
+  height: 74%;
+  border-radius: 0.6rem;
+  background: var(--color-lane);
+  transform-origin: top center;
+}
+
+.lba-col-1 {
+  left: 5.5%;
+}
+.lba-col-2 {
+  left: 35.5%;
+}
+.lba-col-3 {
+  left: 65.5%;
+}
+
+.lba-col-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.55rem;
+}
+
+/* --- Cartes --------------------------------------------------------------- */
+
+.lba-card {
+  position: absolute;
+  width: var(--lba-card-w);
+  height: var(--lba-card-h);
+  border: 1.5px solid var(--color-border-default);
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+  box-shadow: var(--lba-shadow);
+}
+
+/* État final (et état figé sans animation). */
+.lba-card-a {
+  left: var(--lba-col-1);
+  top: var(--lba-row-1);
+}
+.lba-card-b {
+  left: var(--lba-col-2);
+  top: var(--lba-row-1);
+}
+.lba-card-c {
+  left: var(--lba-col-3);
+  top: var(--lba-row-1);
+}
+.lba-card-move {
+  left: var(--lba-col-3);
+  top: var(--lba-row-2);
+  z-index: 2;
+  border-color: var(--color-success);
+}
+
+.lba-check {
+  position: absolute;
+  top: -0.45rem;
+  right: -0.45rem;
+  display: flex;
+  width: 1.15rem;
+  height: 1.15rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--color-success);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgb(16 124 16 / 0.4);
+}
+
+.lba-placeholder {
+  position: absolute;
+  left: var(--lba-col-2);
+  top: var(--lba-row-2);
+  width: var(--lba-card-w);
+  height: var(--lba-card-h);
+  border: 1.5px dashed var(--color-accent-500);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--color-accent-500) 10%, transparent);
+  opacity: 0;
+}
+
+.lba-cursor {
+  position: absolute;
+  z-index: 3;
+  width: 1.35rem;
+  height: 1.35rem;
+  left: 50%;
+  top: 56%;
+  opacity: 0;
+  transform-origin: 20% 15%;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.35));
+}
+
+/* --- Animation (seulement si l'utilisateur n'a pas demandé moins de mouvement) --- */
+
+@media (prefers-reduced-motion: no-preference) {
+  .lba-scene {
+    animation: lba-scene 12s linear infinite;
+  }
+  .lba-frame,
+  .lba-board {
+    animation: lba-frame 12s var(--lba-ease) infinite;
+  }
+  .lba-header {
+    animation: lba-header 12s var(--lba-ease) infinite;
+  }
+  .lba-col-1 {
+    animation: lba-col-1 12s var(--lba-ease) infinite;
+  }
+  .lba-col-2 {
+    animation: lba-col-2 12s var(--lba-ease) infinite;
+  }
+  .lba-col-3 {
+    animation: lba-col-3 12s var(--lba-ease) infinite;
+  }
+  .lba-fill {
+    animation: lba-fill 12s var(--lba-ease) infinite;
+  }
+  .lba-pct-40 {
+    animation: lba-pct-40 12s linear infinite;
+  }
+  .lba-pct-60 {
+    animation: lba-pct-60 12s linear infinite;
+  }
+  .lba-pct > .lba-pct-80 {
+    animation: lba-pct-80 12s linear infinite;
+  }
+  .lba-card-a {
+    animation: lba-card-a 12s var(--lba-ease) infinite;
+  }
+  .lba-card-b {
+    animation: lba-card-b 12s var(--lba-ease) infinite;
+  }
+  .lba-card-c {
+    animation: lba-card-c 12s var(--lba-ease) infinite;
+  }
+  .lba-card-move {
+    animation: lba-card-move 12s var(--lba-ease) infinite;
+  }
+  .lba-check {
+    animation: lba-check 12s var(--lba-ease) infinite;
+  }
+  .lba-placeholder {
+    animation: lba-placeholder 12s var(--lba-ease) infinite;
+  }
+  .lba-cursor {
+    animation: lba-cursor 12s var(--lba-ease) infinite;
+  }
+}
+
+/* Fondu final de toute la scène. */
+@keyframes lba-scene {
+  0%,
+  86% {
+    opacity: 1;
+  }
+  95%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes lba-frame {
+  0%,
+  10% {
+    opacity: 0;
+  }
+  17%,
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes lba-header {
+  0%,
+  14% {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  20%,
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Les colonnes « se dessinent » de haut en bas, l'une après l'autre. */
+@keyframes lba-col-1 {
+  0%,
+  16% {
+    opacity: 0;
+    transform: scaleY(0.35);
+  }
+  21%,
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes lba-col-2 {
+  0%,
+  18% {
+    opacity: 0;
+    transform: scaleY(0.35);
+  }
+  23%,
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes lba-col-3 {
+  0%,
+  20% {
+    opacity: 0;
+    transform: scaleY(0.35);
+  }
+  25%,
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Progression du sprint : 40 % → 60 % → 80 %. */
+@keyframes lba-fill {
+  0%,
+  36% {
+    width: 0%;
+  }
+  41%,
+  60% {
+    width: 40%;
+  }
+  64%,
+  77% {
+    width: 60%;
+  }
+  82%,
+  100% {
+    width: 80%;
+  }
+}
+@keyframes lba-pct-40 {
+  0%,
+  38% {
+    opacity: 0;
+  }
+  41%,
+  61% {
+    opacity: 1;
+  }
+  63%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes lba-pct-60 {
+  0%,
+  61% {
+    opacity: 0;
+  }
+  63%,
+  78% {
+    opacity: 1;
+  }
+  80%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes lba-pct-80 {
+  0%,
+  78% {
+    opacity: 0;
+  }
+  80%,
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Cartes fixes : apparition en désordre, puis chacune glisse à sa place. */
+@keyframes lba-card-a {
+  0% {
+    left: 76%;
+    top: -5%;
+    transform: rotate(11deg);
+    opacity: 0;
+  }
+  6% {
+    opacity: 1;
+  }
+  27% {
+    left: 76%;
+    top: -5%;
+    transform: rotate(11deg);
+  }
+  33%,
+  100% {
+    left: var(--lba-col-1);
+    top: var(--lba-row-2);
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes lba-card-b {
+  0% {
+    left: -7%;
+    top: 74%;
+    transform: rotate(8deg);
+    opacity: 0;
+  }
+  7% {
+    opacity: 1;
+  }
+  30% {
+    left: -7%;
+    top: 74%;
+    transform: rotate(8deg);
+  }
+  36%,
+  100% {
+    left: var(--lba-col-2);
+    top: var(--lba-row-1);
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes lba-card-c {
+  0% {
+    left: 81%;
+    top: 79%;
+    transform: rotate(-9deg);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  33% {
+    left: 81%;
+    top: 79%;
+    transform: rotate(-9deg);
+  }
+  39%,
+  100% {
+    left: var(--lba-col-3);
+    top: var(--lba-row-1);
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* La carte en mouvement : désordre → À faire → En cours → Terminé. */
+@keyframes lba-card-move {
+  0% {
+    left: -9%;
+    top: 3%;
+    transform: rotate(-14deg);
+    opacity: 0;
+    border-color: var(--color-border-default);
+    box-shadow: var(--lba-shadow);
+  }
+  5% {
+    opacity: 1;
+  }
+  24% {
+    left: -9%;
+    top: 3%;
+    transform: rotate(-14deg);
+  }
+  30%,
+  47% {
+    left: var(--lba-col-1);
+    top: var(--lba-row-1);
+    transform: none;
+    opacity: 1;
+    border-color: var(--color-border-default);
+    box-shadow: var(--lba-shadow);
+  }
+  /* Saisie : la carte se soulève, bordure bleue, ombre portée. */
+  51% {
+    left: var(--lba-col-1);
+    top: var(--lba-row-1);
+    transform: translateY(-6%) scale(1.07) rotate(-3deg);
+    border-color: var(--color-accent-500);
+    box-shadow: var(--lba-shadow-lifted);
+  }
+  58% {
+    left: var(--lba-col-2);
+    top: var(--lba-row-2);
+    transform: translateY(-6%) scale(1.07) rotate(-3deg);
+    border-color: var(--color-accent-500);
+    box-shadow: var(--lba-shadow-lifted);
+  }
+  /* Posée dans « En cours ». */
+  61%,
+  66% {
+    left: var(--lba-col-2);
+    top: var(--lba-row-2);
+    transform: none;
+    border-color: var(--color-accent-500);
+    box-shadow: var(--lba-shadow);
+  }
+  /* Repart vers « Terminé ». */
+  69% {
+    left: var(--lba-col-2);
+    top: var(--lba-row-2);
+    transform: translateY(-5%) scale(1.04) rotate(2deg);
+    border-color: var(--color-accent-500);
+    box-shadow: var(--lba-shadow-lifted);
+  }
+  74% {
+    left: var(--lba-col-3);
+    top: var(--lba-row-2);
+    transform: translateY(-5%) scale(1.04) rotate(2deg);
+    border-color: var(--color-accent-500);
+    box-shadow: var(--lba-shadow-lifted);
+  }
+  76% {
+    left: var(--lba-col-3);
+    top: var(--lba-row-2);
+    transform: none;
+    border-color: var(--color-accent-500);
+    box-shadow: var(--lba-shadow);
+  }
+  /* Validée : bordure verte. */
+  79%,
+  100% {
+    left: var(--lba-col-3);
+    top: var(--lba-row-2);
+    transform: none;
+    opacity: 1;
+    border-color: var(--color-success);
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--color-success) 18%, transparent),
+      var(--lba-shadow);
+  }
+}
+
+@keyframes lba-check {
+  0%,
+  77% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  80% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+  82%,
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Emplacement bleu en pointillés dans « En cours », pendant le déplacement. */
+@keyframes lba-placeholder {
+  0%,
+  48% {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  52%,
+  57% {
+    opacity: 1;
+    transform: none;
+  }
+  60%,
+  100% {
+    opacity: 0;
+    transform: none;
+  }
+}
+
+/* Curseur : arrive sur la carte, la saisit, la dépose dans « En cours ». */
+@keyframes lba-cursor {
+  0%,
+  41% {
+    left: 33%;
+    top: 16%;
+    opacity: 0;
+    transform: none;
+  }
+  43% {
+    left: 31%;
+    top: 18%;
+    opacity: 1;
+    transform: none;
+  }
+  47% {
+    left: 21%;
+    top: 34%;
+    opacity: 1;
+    transform: none;
+  }
+  /* Clic maintenu. */
+  49%,
+  51% {
+    left: 21%;
+    top: 34%;
+    transform: scale(0.82);
+  }
+  58% {
+    left: 51%;
+    top: 54%;
+    transform: scale(0.82);
+  }
+  /* Relâché. */
+  61% {
+    left: 51%;
+    top: 54%;
+    opacity: 1;
+    transform: none;
+  }
+  65%,
+  100% {
+    left: 55%;
+    top: 60%;
+    opacity: 0;
+    transform: none;
+  }
+}

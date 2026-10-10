@@ -1,11 +1,17 @@
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
 @import 'tailwindcss';
 
+/* Les utilitaires `dark:` suivent la bascule de thème de l'application (classe `.dark`). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /**
- * Thème clair et dense, accents bleus — repères visuels d'Azure DevOps.
+ * Thème clair et dense, accents bleus — refonte visioPlanner.
+ * Fond « toile » gris chaud, contenus posés sur des cartes blanches arrondies.
  * Toutes les couleurs de l'application passent par ces jetons.
  */
 @theme {
-  --color-accent-50: #eff6fc;
+  --color-accent-50: #eef5fc;
   --color-accent-100: #deecf9;
   --color-accent-200: #c7e0f4;
   --color-accent-300: #71afe5;
@@ -16,51 +22,89 @@
   --color-accent-800: #004578;
   --color-accent-900: #003966;
 
+  /* Toile de l'application (derrière les cartes) et surfaces. */
+  --color-canvas: #f5f4f2;
   --color-surface: #ffffff;
-  --color-surface-muted: #faf9f8;
-  --color-surface-sunken: #f3f2f1;
-  --color-border-subtle: #edebe9;
-  --color-border-default: #e1dfdd;
-  --color-border-strong: #c8c6c4;
+  --color-surface-muted: #faf9f7;
+  --color-surface-sunken: #f1f0ee;
+  --color-lane: #ebeae7;
+  --color-border-subtle: #efeeec;
+  --color-border-default: #e5e3e0;
+  --color-border-strong: #cfccc8;
 
-  --color-ink-900: #201f1e;
-  --color-ink-700: #323130;
-  --color-ink-500: #605e5c;
-  --color-ink-400: #8a8886;
+  --color-ink-900: #1c1b1a;
+  --color-ink-800: #262523;
+  --color-ink-700: #33322f;
+  --color-ink-600: #4a4845;
+  --color-ink-500: #67645f;
+  --color-ink-400: #94918c;
+  /* Teintes claires, utilisées uniquement par des variantes `dark:`. */
+  --color-ink-300: #c9c7c3;
+  --color-ink-200: #e2e1df;
+  --color-ink-100: #f5f5f4;
 
   --color-success: #107c10;
-  --color-warning: #ca5010;
-  --color-danger: #d13438;
+  --color-warning: #c85a12;
+  --color-danger: #c4314b;
+  --color-purple: #8764b8;
+  /* Sous-tâches : or des « Task » Azure DevOps. */
+  --color-subtask: #a4880a;
+
+  /* Statuts du flux Kanban — mêmes teintes sur board, backlog, sprints et dashboards. */
+  --color-status-todo: #8a8886;
+  --color-status-progress: #0078d4;
+  --color-status-test: #d4570f;
+  --color-status-ready: #8764b8;
+  --color-status-done: #107c10;
 
   --font-sans:
-    'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, 'Helvetica Neue', sans-serif;
+    'Inter Variable', 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono:
+    'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
 
   /* Typographie compacte : la densité prime sur l'aération. */
   --text-xs: 0.6875rem;
   --text-sm: 0.75rem;
   --text-base: 0.8125rem;
+  --text-md: 0.875rem;
   --text-lg: 0.9375rem;
   --text-xl: 1.125rem;
   --text-2xl: 1.375rem;
+
+  --radius-card: 0.75rem;
+
+  --shadow-card: 0 1px 2px rgb(28 27 26 / 0.04), 0 1px 1px rgb(28 27 26 / 0.03);
+  --shadow-raised: 0 1px 3px rgb(28 27 26 / 0.08), 0 1px 2px rgb(28 27 26 / 0.04);
+  --shadow-pop: 0 10px 30px -8px rgb(28 27 26 / 0.18), 0 2px 6px rgb(28 27 26 / 0.06);
 }
 
 /* Thème sombre haute lisibilité (Dark Mode Natif) */
 .dark {
-  --color-surface: #1e1e1e;
-  --color-surface-muted: #252526;
-  --color-surface-sunken: #181818;
-  --color-border-subtle: #2d2d2d;
-  --color-border-default: #383838;
-  --color-border-strong: #525252;
+  --color-canvas: #161616;
+  --color-surface: #1f1f1f;
+  --color-surface-muted: #1b1b1b;
+  --color-surface-sunken: #262626;
+  --color-lane: #1a1a1a;
+  --color-border-subtle: #2a2a2a;
+  --color-border-default: #333333;
+  --color-border-strong: #4d4d4d;
 
-  --color-ink-900: #f8fafc;
-  --color-ink-700: #e2e8f0;
-  --color-ink-500: #94a3b8;
-  --color-ink-400: #64748b;
+  --color-ink-900: #f5f5f4;
+  --color-ink-800: #ececea;
+  --color-ink-700: #e2e1df;
+  --color-ink-600: #c9c7c3;
+  --color-ink-500: #a3a09b;
+  --color-ink-400: #75726d;
 
   --color-accent-50: #0f1e36;
   --color-accent-100: #132a4e;
   --color-accent-200: #1a3d6d;
+  --color-accent-700: #6cb2ef;
+
+  --color-success: #4caf50;
+  --color-danger: #ef6b7f;
+  --color-subtask: #d0af43;
+  --color-warning: #f0883e;
 }
 
 @layer base {
@@ -69,7 +113,8 @@
   }
 
   body {
-    @apply bg-surface text-ink-700 font-sans text-base antialiased;
+    @apply bg-canvas text-ink-700 font-sans text-base antialiased;
+    font-feature-settings: 'cv11', 'ss01';
   }
 
   *:focus-visible {
@@ -84,10 +129,36 @@
     height: 8px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply bg-border-strong rounded;
+    @apply bg-border-strong rounded-full;
   }
   .scrollbar-thin::-webkit-scrollbar-track {
     @apply bg-transparent;
+  }
+
+  /* Carte blanche posée sur la toile : brique de base de toutes les pages. */
+  .card {
+    @apply bg-surface border-border-default rounded-card border shadow-card;
+  }
+
+  /* Pastille de compteur grise à côté des titres (« 7 tickets »). */
+  .count-pill {
+    @apply bg-surface-sunken text-ink-500 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap;
+  }
+
+  /* Liste déroulante de filtre en pilule à bordure pointillée. */
+  .filter-select {
+    @apply border-border-strong bg-surface text-ink-700 hover:border-ink-400 h-8 cursor-pointer appearance-none rounded-lg border border-dashed py-0 pr-7 pl-2.5 text-sm font-medium transition-colors focus:border-accent-500 focus:outline-none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2367645f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.55rem center;
+  }
+  .filter-select.is-active {
+    @apply border-accent-400 bg-accent-50 text-accent-700 border-solid;
+  }
+
+  /* Champ de recherche sur fond grisé, sans bordure. */
+  .search-field {
+    @apply bg-surface-sunken text-ink-900 placeholder:text-ink-400 h-8 w-full rounded-lg border border-transparent pr-2 pl-8 text-sm focus:border-accent-500 focus:bg-surface focus:outline-none;
   }
 }
 

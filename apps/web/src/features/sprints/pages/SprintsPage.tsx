@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
+  CalendarDays,
   CheckCircle2,
   FileText,
   Flag,
+  Pencil,
   Play,
   Plus,
   Save,
   Search,
+  Target,
   UserPlus,
   XCircle,
 } from 'lucide-react';
@@ -30,8 +33,7 @@ import {
   LoadingState,
 } from '@/components/common/StateMessage';
 import { Button } from '@/components/ui/button';
-import { Field } from '@/components/ui/field';
-import { Input, Textarea } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { useProjectPermissions } from '@/features/projects/hooks';
 import { ApiError } from '@/lib/api-client';
@@ -40,28 +42,29 @@ import { SprintConflictDialog } from '@/features/work-items/components/SprintCon
 import {
   StatusPill,
   StoryPoints,
+  TicketKey,
   TypeIcon,
 } from '@/features/work-items/components/WorkItemChrome';
+import { cn } from '@/lib/utils';
 import { useBacklog, useUpdateWorkItem } from '@/features/work-items/hooks';
 import { CloseSprintDialog } from '../components/CloseSprintDialog';
 import { SprintReportDialog } from '../components/SprintReportDialog';
+import { SprintFormDialog } from '../components/SprintFormDialog';
 import { SprintStatusBadge } from '../components/SprintStatusBadge';
 import { formatSprintDate as formatDate } from '../format';
 import {
   defaultSprintId,
-  useCreateSprint,
   useSprint,
   useSprints,
   useUpdateRetrospective,
   useUpdateSprint,
 } from '../hooks';
 
-const today = () => new Date().toISOString().slice(0, 10);
-
 export function SprintsPage() {
   const { projectKey = '' } = useParams<{ projectKey: string }>();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const { data: sprints, isLoading, error } = useSprints(projectKey);
   const { data: selected, isLoading: detailLoading } = useSprint(projectKey, selectedId);
   const { can } = useProjectPermissions(projectKey);
@@ -77,10 +80,10 @@ export function SprintsPage() {
   if (error) return <ErrorState error={error} />;
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[320px_1fr]">
-      <aside className="border-border-default flex min-h-0 flex-col border-r">
-        <header className="border-border-subtle flex items-center gap-2 border-b px-3 py-2">
-          <h1 className="text-ink-900 text-xl font-semibold">Sprints</h1>
+    <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[300px_1fr]">
+      <aside className="flex min-h-0 flex-col gap-3 px-4 pt-5 pb-4 sm:pl-6 md:pr-0 md:pb-6">
+        <header className="flex items-center gap-2">
+          <h1 className="text-ink-900 text-xl font-bold tracking-tight">Sprints</h1>
           {can('sprint:manage') && (
             <Button
               variant="primary"
@@ -88,40 +91,56 @@ export function SprintsPage() {
               className="ml-auto"
               onClick={() => setCreateOpen(true)}
             >
-              <Plus className="size-3.5" strokeWidth={2.5} />
+              <Plus strokeWidth={2.5} />
               Nouveau
             </Button>
           )}
         </header>
 
-        <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
+        <div className="scrollbar-thin -m-1 flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto p-1">
           {(sprints ?? []).length === 0 ? (
-            <EmptyState title="Aucun sprint" description="Creez le premier sprint du projet." />
+            <div className="card">
+              <EmptyState title="Aucun sprint" description="Créez le premier sprint du projet." />
+            </div>
           ) : (
-            sprints?.map((sprint) => (
-              <button
-                key={sprint.id}
-                type="button"
-                onClick={() => setSelectedId(sprint.id)}
-                className="border-border-subtle hover:bg-surface-muted flex w-full flex-col gap-1 border-b px-3 py-2 text-left"
-              >
-                <span className="flex items-center gap-2">
-                  <span className="text-ink-900 min-w-0 flex-1 truncate text-base font-semibold">
-                    {sprint.name}
+            sprints?.map((sprint) => {
+              const isSelected = sprint.id === selectedId;
+              const isCompleted = sprint.status === SprintStatusEnum.COMPLETED;
+              return (
+                <button
+                  key={sprint.id}
+                  type="button"
+                  onClick={() => setSelectedId(sprint.id)}
+                  aria-current={isSelected ? 'true' : undefined}
+                  className={cn(
+                    'card flex w-full flex-col gap-2 px-3.5 py-3 text-left transition-colors',
+                    isSelected
+                      ? 'border-accent-400 ring-accent-500/15 ring-3'
+                      : 'hover:border-border-strong',
+                  )}
+                >
+                  <span className="flex items-start gap-2">
+                    <span className="text-ink-900 min-w-0 flex-1 text-base leading-snug font-semibold">
+                      {sprint.name}
+                    </span>
+                    <SprintStatusBadge status={sprint.status} />
                   </span>
-                  <SprintStatusBadge status={sprint.status} />
-                </span>
-                <span className="text-ink-400 text-xs">
-                  {formatDate(sprint.startDate)} - {formatDate(sprint.endDate)}
-                </span>
-                <ProgressBar done={sprint.liveCompletedPoints} total={sprint.liveCommittedPoints} />
-              </button>
-            ))
+                  <span className="text-ink-500 text-xs">
+                    {formatDate(sprint.startDate)} – {formatDate(sprint.endDate)}
+                  </span>
+                  <ProgressBar
+                    done={isCompleted ? 1 : sprint.liveCompletedPoints}
+                    total={isCompleted ? 1 : sprint.liveCommittedPoints}
+                    tone={isCompleted ? 'success' : 'accent'}
+                  />
+                </button>
+              );
+            })
           )}
         </div>
       </aside>
 
-      <main className="min-h-0 overflow-y-auto">
+      <main className="scrollbar-thin min-h-0 overflow-y-auto">
         {detailLoading ? (
           <LoadingState />
         ) : !selected ? (
@@ -133,6 +152,7 @@ export function SprintsPage() {
             canAssign={can('workitem:update')}
             canCreate={can('workitem:create')}
             canStart={can('sprint:manage')}
+            onEdit={() => setEditOpen(true)}
             onStartSprint={() =>
               updateSprint.mutate({
                 sprintId: selected.id,
@@ -146,11 +166,17 @@ export function SprintsPage() {
         )}
       </main>
 
-      <CreateSprintDialog
+      <SprintFormDialog
         projectRef={projectKey}
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={(sprintId) => setSelectedId(sprintId)}
+        onSaved={(sprintId) => setSelectedId(sprintId)}
+      />
+      <SprintFormDialog
+        projectRef={projectKey}
+        open={editOpen && Boolean(selected)}
+        sprint={selected}
+        onClose={() => setEditOpen(false)}
       />
     </div>
   );
@@ -165,6 +191,7 @@ function SprintDetailView({
   starting,
   startError,
   onStartSprint,
+  onEdit,
   projectRef,
 }: {
   sprint: SprintDetail;
@@ -175,6 +202,7 @@ function SprintDetailView({
   starting: boolean;
   startError: unknown;
   onStartSprint: () => void;
+  onEdit: () => void;
   projectRef: string;
 }) {
   const [reportOpen, setReportOpen] = useState(false);
@@ -186,50 +214,60 @@ function SprintDetailView({
   const { data: fullBacklog, isLoading: backlogLoading } = useBacklog(projectRef, {});
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <section className="border-border-subtle border-b pb-3">
-        <div className="flex items-start gap-3">
-          <div className="min-w-0 flex-1">
-            <h2 className="text-ink-900 truncate text-2xl font-semibold">{sprint.name}</h2>
-            <p className="text-ink-500 text-base">
-              {formatDate(sprint.startDate)} - {formatDate(sprint.endDate)}
-            </p>
-          </div>
+    <div className="flex flex-col gap-4 px-4 pt-5 pb-6 sm:px-6">
+      <section className="card p-5">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <h2 className="text-ink-900 text-2xl font-bold tracking-tight">{sprint.name}</h2>
           <SprintStatusBadge status={sprint.status} />
+        </div>
+        <p className="text-ink-500 mt-1 flex items-center gap-1.5 text-sm">
+          <CalendarDays className="size-3.5" strokeWidth={1.75} />
+          {formatDate(sprint.startDate)} – {formatDate(sprint.endDate)}
+        </p>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           {canStart && sprint.status === SprintStatusEnum.PLANNED && (
             <Button variant="primary" onClick={onStartSprint} loading={starting}>
-              <Play className="size-3.5" strokeWidth={2} />
+              <Play strokeWidth={2} />
               Démarrer
+            </Button>
+          )}
+          {canStart && sprint.status !== SprintStatusEnum.COMPLETED && (
+            <Button variant="secondary" onClick={onEdit}>
+              <Pencil strokeWidth={1.75} />
+              Modifier
             </Button>
           )}
           {canAssign && sprint.status !== SprintStatusEnum.COMPLETED && (
             <Button variant="secondary" onClick={() => setAssignmentOpen(true)}>
-              <UserPlus className="size-3.5" strokeWidth={2} />
+              <UserPlus strokeWidth={1.75} />
               Affecter des Work Items
             </Button>
           )}
           {canCreate && sprint.status !== SprintStatusEnum.COMPLETED && (
             <Button variant="secondary" onClick={() => setNewItemOpen(true)}>
-              <Plus className="size-3.5" strokeWidth={2} />
+              <Plus strokeWidth={2} />
               New Item
             </Button>
           )}
-          <Button
-            variant="ghost"
-            onClick={() => setReportOpen(true)}
-            className="gap-1.5 text-xs text-ink-700 hover:text-ink-900"
-          >
-            <FileText className="size-3.5 text-accent-600" />
-            <span>Rapport</span>
+          <Button variant="secondary" onClick={() => setReportOpen(true)}>
+            <FileText strokeWidth={1.75} />
+            Rapport
           </Button>
           {canClose && sprint.status !== SprintStatusEnum.COMPLETED && (
-            <Button variant="secondary" onClick={() => setCloseOpen(true)}>
-              <Flag className="size-3.5" strokeWidth={2} />
+            <Button variant="primary" onClick={() => setCloseOpen(true)}>
+              <Flag strokeWidth={2} />
               Clôturer
             </Button>
           )}
         </div>
-        {sprint.goal && <p className="text-ink-700 mt-2 max-w-3xl text-base">{sprint.goal}</p>}
+
+        {sprint.goal && (
+          <p className="bg-accent-50 text-accent-700 mt-4 flex items-start gap-2 rounded-lg px-3.5 py-2.5 text-base">
+            <Target className="mt-0.5 size-4 shrink-0" strokeWidth={1.75} />
+            {sprint.goal}
+          </p>
+        )}
       </section>
 
       <InlineError error={startError} />
@@ -265,36 +303,46 @@ function SprintDetailView({
         defaultSprintId={sprint.id}
       />
 
-      <section className="grid grid-cols-4 gap-3">
-        <Metric label="Tickets" value={`${sprint.completedItems}/${sprint.totalItems}`} />
+      <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <Metric
+          label="Tickets terminés"
+          done={sprint.completedItems}
+          total={sprint.totalItems}
+          tone="success"
+        />
         <Metric
           label="Points live"
-          value={`${sprint.liveCompletedPoints}/${sprint.liveCommittedPoints}`}
+          done={sprint.liveCompletedPoints}
+          total={sprint.liveCommittedPoints}
+          tone="accent"
         />
-        <Metric label="Points engages" value={sprint.committedPoints ?? '-'} />
-        <Metric label="Points termines" value={sprint.completedPoints ?? '-'} />
+        <Metric label="Points engagés" value={sprint.committedPoints} />
+        <Metric label="Points terminés" value={sprint.completedPoints} />
       </section>
 
-      <section>
-        <h3 className="text-ink-900 mb-2 text-lg font-semibold">Tickets du sprint</h3>
-        <div className="border-border-default overflow-hidden rounded border">
-          {sprint.items.length === 0 ? (
-            <EmptyState title="Aucun ticket affecte" />
-          ) : (
-            sprint.items.map((item) => (
-              <div
-                key={item.id}
-                className="border-border-subtle grid grid-cols-[14px_90px_1fr_120px_60px] items-center gap-2 border-b px-3 py-1.5 last:border-b-0"
-              >
-                <TypeIcon type={item.type} />
-                <span className="text-ink-400 text-xs font-semibold">{item.key}</span>
-                <span className="text-ink-900 truncate text-base">{item.title}</span>
-                <StatusPill status={item.status} />
-                <StoryPoints points={item.storyPoints} />
-              </div>
-            ))
-          )}
-        </div>
+      <section className="card overflow-hidden">
+        <header className="border-border-subtle flex items-center gap-2 border-b px-4 py-3">
+          <h3 className="text-ink-900 text-lg font-semibold">Tickets du sprint</h3>
+          <span className="count-pill">{sprint.items.length}</span>
+        </header>
+        {sprint.items.length === 0 ? (
+          <EmptyState title="Aucun ticket affecté" />
+        ) : (
+          sprint.items.map((item) => (
+            <div
+              key={item.id}
+              className="border-border-subtle hover:bg-surface-muted grid grid-cols-[16px_96px_1fr_auto_32px] items-center gap-3 border-b px-4 py-2.5 last:border-b-0"
+            >
+              <TypeIcon type={item.type} />
+              <TicketKey value={item.key} />
+              <span className="text-ink-900 truncate text-base">{item.title}</span>
+              <StatusPill status={item.status} />
+              <span className="flex justify-end">
+                <StoryPoints points={item.storyPoints} compact />
+              </span>
+            </div>
+          ))
+        )}
       </section>
 
       <RetrospectiveEditor projectRef={projectRef} sprint={sprint} />
@@ -354,9 +402,7 @@ function SprintAssignmentDialog({
     if (initialized.current || loading) return;
     initialized.current = true;
     setSelectedIds(
-      new Set(
-        availableItems.filter((item) => item.sprintId === sprint.id).map((item) => item.id),
-      ),
+      new Set(availableItems.filter((item) => item.sprintId === sprint.id).map((item) => item.id)),
     );
     setSearch('');
     setSaveError(null);
@@ -447,7 +493,7 @@ function SprintAssignmentDialog({
     >
       <div className="flex flex-col gap-3">
         <InlineError error={saveError} />
-        <div className="border-border-strong bg-surface flex h-7 items-center gap-1.5 rounded border px-2">
+        <div className="bg-surface-sunken focus-within:border-accent-500 flex h-9 items-center gap-2 rounded-lg border border-transparent px-3">
           <Search className="text-ink-400 size-3.5" />
           <input
             value={search}
@@ -467,7 +513,7 @@ function SprintAssignmentDialog({
           </p>
         )}
 
-        <div className="border-border-default scrollbar-thin max-h-80 overflow-y-auto rounded border">
+        <div className="border-border-default scrollbar-thin max-h-80 overflow-y-auto rounded-xl border">
           {loading ? (
             <LoadingState />
           ) : visibleItems.length === 0 ? (
@@ -490,7 +536,7 @@ function SprintAssignmentDialog({
                     {LABELS_FR.workItemType[item.type]}
                   </span>
                 </span>
-                <span className="text-ink-400 w-24 shrink-0 text-xs font-semibold">{item.key}</span>
+                <TicketKey value={item.key} className="w-24 shrink-0" />
                 <span
                   className={`text-ink-900 min-w-0 flex-1 truncate text-sm ${
                     item.type === WorkItemType.EPIC ? 'font-semibold' : ''
@@ -513,87 +559,6 @@ function SprintAssignmentDialog({
         onConfirm={() => void save(true)}
         confirming={saving}
       />
-    </Modal>
-  );
-}
-
-function CreateSprintDialog({
-  projectRef,
-  open,
-  onClose,
-  onCreated,
-}: {
-  projectRef: string;
-  open: boolean;
-  onClose: () => void;
-  onCreated: (sprintId: string) => void;
-}) {
-  const createSprint = useCreateSprint(projectRef);
-  const [name, setName] = useState('');
-  const [goal, setGoal] = useState('');
-  const [startDate, setStartDate] = useState(today());
-  const [endDate, setEndDate] = useState(today());
-
-  const submit = async () => {
-    const sprint = await createSprint.mutateAsync({
-      name,
-      goal: goal || null,
-      startDate: new Date(startDate),
-      endDate: new Date(endDate),
-    });
-    onCreated(sprint.id);
-    setName('');
-    setGoal('');
-    onClose();
-  };
-
-  return (
-    <Modal
-      open={open}
-      title="Nouveau sprint"
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            Annuler
-          </Button>
-          <Button variant="primary" onClick={submit} loading={createSprint.isPending}>
-            Creer
-          </Button>
-        </>
-      }
-    >
-      <div className="flex flex-col gap-3">
-        <InlineError error={createSprint.error} />
-        <Field label="Nom" htmlFor="sprint-name" required>
-          <Input id="sprint-name" value={name} onChange={(event) => setName(event.target.value)} />
-        </Field>
-        <Field label="Objectif" htmlFor="sprint-goal">
-          <Textarea
-            id="sprint-goal"
-            value={goal}
-            onChange={(event) => setGoal(event.target.value)}
-          />
-        </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Debut" htmlFor="sprint-start" required>
-            <Input
-              id="sprint-start"
-              type="date"
-              value={startDate}
-              onChange={(event) => setStartDate(event.target.value)}
-            />
-          </Field>
-          <Field label="Fin" htmlFor="sprint-end" required>
-            <Input
-              id="sprint-end"
-              type="date"
-              value={endDate}
-              onChange={(event) => setEndDate(event.target.value)}
-            />
-          </Field>
-        </div>
-      </div>
     </Modal>
   );
 }
@@ -627,46 +592,62 @@ function RetrospectiveEditor({ projectRef, sprint }: { projectRef: string; sprin
     updateRetro.mutate({ sprintId: sprint.id, input: { retroSummary: summary || null, items } });
 
   return (
-    <section>
-      <div className="mb-2 flex items-center gap-2">
-        <h3 className="text-ink-900 text-lg font-semibold">Retrospective</h3>
+    <section className="card p-5">
+      <div className="mb-3 flex items-center gap-2">
+        <h3 className="text-ink-900 text-lg font-semibold">Rétrospective</h3>
         {can('retro:manage') && (
           <Button size="sm" className="ml-auto" onClick={save} loading={updateRetro.isPending}>
-            <Save className="size-3.5" strokeWidth={2} />
+            <Save strokeWidth={1.75} />
             Enregistrer
           </Button>
         )}
       </div>
       <InlineError error={updateRetro.error} />
+      <label htmlFor="retro-summary" className="text-ink-900 mb-1.5 block text-sm font-semibold">
+        Synthèse
+      </label>
       <Textarea
+        id="retro-summary"
         value={summary}
         onChange={(event) => setSummary(event.target.value)}
-        placeholder="Synthese de la retrospective"
+        placeholder="Synthèse de la rétrospective"
         disabled={!can('retro:manage')}
-        className="mb-3"
+        className="mb-4"
       />
-      <div className="grid grid-cols-3 gap-3">
-        {Object.values(RetroCategory).map((category) => (
-          <div key={category} className="border-border-default rounded border">
-            <div className="border-border-subtle flex items-center border-b px-2 py-1">
-              <span className="text-ink-700 text-sm font-semibold">
-                {LABELS_FR.retroCategory[category]}
-              </span>
-              {can('retro:manage') && (
-                <button
-                  type="button"
-                  onClick={() => addItem(category)}
-                  className="text-accent-700 hover:bg-accent-50 ml-auto rounded p-1"
-                  aria-label="Ajouter"
-                >
-                  <Plus className="size-3.5" strokeWidth={2} />
-                </button>
-              )}
-            </div>
-            <div className="flex flex-col gap-1 p-2">
-              {items
-                .filter((item) => item.category === category)
-                .map((item, index) => (
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        {Object.values(RetroCategory).map((category) => {
+          const tone = RETRO_TONE[category];
+          const categoryItems = items.filter((item) => item.category === category);
+          return (
+            <div key={category} className={cn('rounded-xl p-3', tone.panel)}>
+              <div className="mb-2.5 flex items-center gap-2">
+                <span className={cn('size-2 shrink-0 rounded-full', tone.dot)} />
+                <span className="text-ink-900 text-sm font-semibold">
+                  {LABELS_FR.retroCategory[category]}
+                </span>
+                {can('retro:manage') && (
+                  <button
+                    type="button"
+                    onClick={() => addItem(category)}
+                    className="bg-surface border-border-default text-ink-700 hover:text-ink-900 ml-auto flex size-7 items-center justify-center rounded-lg border shadow-card"
+                    aria-label={`Ajouter : ${LABELS_FR.retroCategory[category]}`}
+                  >
+                    <Plus className="size-3.5" strokeWidth={2} />
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {categoryItems.length === 0 && (
+                  <p
+                    className={cn(
+                      'text-ink-500 flex h-16 items-center justify-center rounded-lg border border-dashed text-sm',
+                      tone.empty,
+                    )}
+                  >
+                    Aucune note pour l’instant
+                  </p>
+                )}
+                {categoryItems.map((item, index) => (
                   <div key={`${category}-${index}`} className="flex items-start gap-1">
                     <button
                       type="button"
@@ -697,32 +678,102 @@ function RetrospectiveEditor({ projectRef, sprint }: { projectRef: string; sprin
                           ),
                         )
                       }
-                      className="min-h-10"
+                      className="bg-surface min-h-10"
                     />
                   </div>
                 ))}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string | number }) {
+/** Teintes des trois colonnes de rétrospective : vert, orange, bleu. */
+const RETRO_TONE: Record<RetroCategory, { panel: string; dot: string; empty: string }> = {
+  [RetroCategory.WENT_WELL]: {
+    panel: 'bg-green-50/70 dark:bg-green-950/25',
+    dot: 'bg-success',
+    empty: 'border-green-200 dark:border-green-900/60',
+  },
+  [RetroCategory.TO_IMPROVE]: {
+    panel: 'bg-orange-50/70 dark:bg-orange-950/25',
+    dot: 'bg-warning',
+    empty: 'border-orange-200 dark:border-orange-900/60',
+  },
+  [RetroCategory.ACTION_ITEM]: {
+    panel: 'bg-accent-50/80',
+    dot: 'bg-accent-500',
+    empty: 'border-accent-200',
+  },
+};
+
+/**
+ * Indicateur de sprint : ratio « fait / total » avec barre, ou valeur figée à la
+ * clôture (`value`), affichée « — » tant que le sprint n'est pas clôturé.
+ */
+function Metric({
+  label,
+  done,
+  total,
+  value,
+  tone = 'accent',
+}: {
+  label: string;
+  done?: number;
+  total?: number;
+  value?: number | null;
+  tone?: 'accent' | 'success';
+}) {
+  const isRatio = done !== undefined && total !== undefined;
   return (
-    <div className="border-border-default rounded border px-3 py-2">
-      <p className="text-ink-400 text-xs font-semibold uppercase">{label}</p>
-      <p className="text-ink-900 mt-1 text-2xl font-semibold">{value}</p>
+    <div className="card px-4 py-3.5">
+      <p className="text-ink-500 text-sm font-medium">{label}</p>
+      {isRatio ? (
+        <>
+          <p className="text-ink-900 mt-1.5 text-3xl font-bold tracking-tight tabular-nums">
+            {done}
+            <span className="text-ink-400 text-lg font-semibold">/{total}</span>
+          </p>
+          <div className="mt-2.5">
+            <ProgressBar done={done} total={total} tone={tone} />
+          </div>
+        </>
+      ) : value === null || value === undefined ? (
+        <>
+          <p className="text-ink-400 mt-1.5 text-3xl font-bold">—</p>
+          <p className="text-ink-500 mt-1.5 text-xs">Disponible à la clôture</p>
+        </>
+      ) : (
+        <p className="text-ink-900 mt-1.5 text-3xl font-bold tracking-tight tabular-nums">
+          {value}
+        </p>
+      )}
     </div>
   );
 }
 
-function ProgressBar({ done, total }: { done: number; total: number }) {
+function ProgressBar({
+  done,
+  total,
+  tone = 'accent',
+}: {
+  done: number;
+  total: number;
+  tone?: 'accent' | 'success';
+}) {
   const width = total > 0 ? Math.round((done / total) * 100) : 0;
   return (
-    <span className="bg-surface-sunken block h-1.5 overflow-hidden rounded">
-      <span className="bg-accent-500 block h-full" style={{ width: `${Math.min(width, 100)}%` }} />
+    <span className="bg-surface-sunken block h-1.5 overflow-hidden rounded-full">
+      <span
+        className={cn(
+          'block h-full rounded-full',
+          tone === 'success' ? 'bg-success' : 'bg-accent-500',
+        )}
+        style={{ width: `${Math.min(width, 100)}%` }}
+      />
     </span>
   );
 }

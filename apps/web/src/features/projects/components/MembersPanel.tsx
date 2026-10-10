@@ -5,7 +5,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/input';
 import { Avatar } from '@/components/common/Avatar';
-import { EmptyState, ErrorState, InlineError, LoadingState } from '@/components/common/StateMessage';
+import {
+  EmptyState,
+  ErrorState,
+  InlineError,
+  LoadingState,
+} from '@/components/common/StateMessage';
 import { useProjectMembers, useRemoveMember, useUpdateMember } from '../hooks';
 import { AddMemberDialog } from './AddMemberDialog';
 
@@ -43,13 +48,13 @@ export function MembersPanel({ projectRef, canManage }: MembersPanelProps) {
   };
 
   return (
-    <section className="border-border-default bg-surface rounded border">
-      <header className="border-border-subtle flex items-center gap-2 border-b px-3 py-2">
+    <section className="card overflow-hidden">
+      <header className="border-border-subtle flex items-center gap-2 border-b px-4 py-3">
         <h2 className="text-ink-900 text-lg font-semibold">Membres</h2>
-        {members && <span className="text-ink-400 text-sm">{members.length}</span>}
+        {members && <span className="count-pill">{members.length}</span>}
         {canManage && (
           <Button size="sm" className="ml-auto" onClick={() => setDialogOpen(true)}>
-            <UserPlus className="size-3.5" strokeWidth={2} />
+            <UserPlus strokeWidth={1.75} />
             Affecter
           </Button>
         )}
@@ -69,8 +74,8 @@ export function MembersPanel({ projectRef, canManage }: MembersPanelProps) {
       {members && members.length > 0 && (
         <ul className="divide-border-subtle divide-y">
           {members.map((member) => (
-            <li key={member.id} className="flex items-center gap-3 px-3 py-1.5">
-              <Avatar name={member.user.name} avatarUrl={member.user.avatarUrl} />
+            <li key={member.id} className="flex items-center gap-3 px-4 py-3">
+              <Avatar name={member.user.name} avatarUrl={member.user.avatarUrl} size="lg" />
               <div className="min-w-0 flex-1">
                 <p className="text-ink-900 truncate text-base font-semibold">
                   {member.user.name}
@@ -80,7 +85,7 @@ export function MembersPanel({ projectRef, canManage }: MembersPanelProps) {
                     </Badge>
                   )}
                 </p>
-                <p className="text-ink-400 truncate text-sm">{member.user.email}</p>
+                <p className="text-ink-500 truncate text-sm">{member.user.email}</p>
               </div>
 
               {canManage ? (
@@ -88,8 +93,10 @@ export function MembersPanel({ projectRef, canManage }: MembersPanelProps) {
                   aria-label={`Rôle de ${member.user.name}`}
                   value={member.role}
                   disabled={updateMember.isPending}
-                  onChange={(event) => changeRole(member.user.id, event.target.value as ProjectRole)}
-                  className="w-44"
+                  onChange={(event) =>
+                    changeRole(member.user.id, event.target.value as ProjectRole)
+                  }
+                  className="w-32 shrink-0"
                 >
                   {Object.values(ProjectRole).map((role) => (
                     <option key={role} value={role}>
@@ -108,8 +115,9 @@ export function MembersPanel({ projectRef, canManage }: MembersPanelProps) {
                   aria-label={`Retirer ${member.user.name}`}
                   disabled={removeMember.isPending}
                   onClick={() => remove(member.user.id, member.user.name)}
+                  className="text-danger hover:bg-red-50 dark:hover:bg-red-950/40 w-7 px-0"
                 >
-                  <Trash2 className="text-danger size-3.5" strokeWidth={1.75} />
+                  <Trash2 strokeWidth={1.75} />
                 </Button>
               )}
             </li>
