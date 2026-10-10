@@ -32,6 +32,7 @@ export const PERMISSIONS = [
   'workitem:delete',
   'workitem:assign',
   'workitem:move', // déplacer sur le board (changer de statut)
+  'board:configure', // colonnes du board : ajout, renommage, ordre, limites WIP
   'backlog:reorder',
   'attachment:manage',
 
@@ -59,6 +60,7 @@ export const PERMISSIONS = [
 export type Permission = (typeof PERMISSIONS)[number];
 
 const PROJECT_LEAD_PERMISSIONS: readonly Permission[] = [
+  'board:configure',
   'repo:manage',
   'branch:create',
   'branch:delete',

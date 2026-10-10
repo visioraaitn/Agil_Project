@@ -120,6 +120,7 @@ model Project {
   members       ProjectMember[]
   repositories  Repository[]
   workItems     WorkItem[]
+  boardColumns  BoardColumn[]
   sprints       Sprint[]
   labels        Label[]
   tags          Tag[]
@@ -413,6 +414,8 @@ model WorkItem {
   sprintId   String?
   assigneeId String?
   reporterId String
+  /// D.1 · Colonne personnalisée du board. `null` = colonne par défaut de son statut.
+  boardColumnId String?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -432,6 +435,7 @@ model WorkItem {
   attachments        Attachment[]
   comments           Comment[]
   pullRequests       PullRequest[]
+  boardColumn        BoardColumn?          @relation(fields: [boardColumnId], references: [id], onDelete: SetNull)
 
   @@index([projectId, status])
   @@index([projectId, type, rank])
@@ -441,6 +445,33 @@ model WorkItem {
   @@index([assigneeId])
   @@index([parentId])
   @@index([deletedAt])
+  @@index([boardColumnId])
+}
+
+/// D.1 · Colonne du Task Board, partagée par tous les membres du projet.
+/// Chaque colonne porte un statut du workflow : les colonnes par défaut
+/// (`systemStatus` renseigné, une par statut) ne se suppriment pas ; les colonnes
+/// personnalisées affinent un statut (ex. « Revue » sur « En test ») sans
+/// toucher au workflow, aux rapports ni à l'approbation des PR.
+model BoardColumn {
+  id           String          @id @default(uuid())
+  projectId    String
+  name         String
+  status       WorkItemStatus
+  /// Renseigné pour les 5 colonnes par défaut uniquement (unicité par projet).
+  systemStatus WorkItemStatus?
+  /// Ordre d'affichage de gauche à droite.
+  position     Int
+  wipLimit     Int?
+  isVisible    Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workItems WorkItem[]
+
+  @@unique([projectId, systemStatus])
+  @@index([projectId, position])
 }
 
 /// Plusieurs membres peuvent réaliser le même ticket. `WorkItem.assigneeId`

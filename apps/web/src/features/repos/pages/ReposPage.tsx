@@ -3,12 +3,12 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import {
   ArrowRight,
   CheckCircle2,
+  ChevronRight,
   Clock,
   GitBranch,
   GitPullRequest,
   Plus,
   Search,
-  Settings,
   Shield,
   Trash2,
 } from 'lucide-react';
@@ -20,8 +20,15 @@ import {
   type BranchSummary,
   type RepositorySummary,
 } from '@visiora/shared';
-import { EmptyState, ErrorState, InlineError, LoadingState } from '@/components/common/StateMessage';
+import {
+  EmptyState,
+  ErrorState,
+  InlineError,
+  LoadingState,
+} from '@/components/common/StateMessage';
+import { Avatar } from '@/components/common/Avatar';
 import { MarkdownEditor } from '@/components/common/MarkdownEditor';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
 import { Input, Select, Textarea } from '@/components/ui/input';
@@ -29,6 +36,7 @@ import { Modal } from '@/components/ui/modal';
 import { useAuth } from '@/features/auth/use-auth';
 import { useProjectPermissions } from '@/features/projects/hooks';
 import { useBacklog } from '@/features/work-items/hooks';
+import { safeHttpUrl } from '@/lib/security';
 import { cn } from '@/lib/utils';
 import {
   useBranches,
@@ -43,7 +51,70 @@ import {
   useUpdateRepository,
 } from '../hooks';
 import { DeleteBranchDialog } from '../components/DeleteBranchDialog';
-import { PrStatusBadge, PullRequestDetailView } from '../components/PullRequestDetailView';
+import {
+  PrStatusBadge,
+  PrStatusIcon,
+  PullRequestDetailView,
+} from '../components/PullRequestDetailView';
+
+/** Onglet souligné de la fiche dépôt, avec compteur en pastille. */
+function RepoTab({
+  active,
+  onClick,
+  label,
+  count,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count?: number;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      className={cn(
+        '-mb-px flex items-center gap-2 border-b-2 pb-3 text-base font-medium transition-colors',
+        active
+          ? 'border-accent-500 text-accent-700 font-semibold'
+          : 'text-ink-600 hover:text-ink-900 border-transparent',
+      )}
+    >
+      {label}
+      {count !== undefined && (
+        <span
+          className={cn(
+            'rounded-full px-1.5 py-px text-xs font-semibold tabular-nums',
+            active ? 'bg-accent-50 text-accent-700' : 'bg-surface-sunken text-ink-500',
+          )}
+        >
+          {count}
+        </span>
+      )}
+    </button>
+  );
+}
+
+const PROVIDER_STYLE: Partial<Record<string, string>> = {
+  GITHUB: 'bg-surface-sunken text-ink-700',
+  GITLAB: 'bg-orange-50 text-warning dark:bg-orange-950/40',
+  BITBUCKET: 'bg-accent-50 text-accent-700',
+  AZURE_DEVOPS: 'bg-accent-50 text-accent-700',
+};
+
+function ProviderBadge({ provider }: { provider: string }) {
+  return (
+    <span
+      className={cn(
+        'shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold tracking-wide',
+        PROVIDER_STYLE[provider] ?? 'bg-surface-sunken text-ink-600',
+      )}
+    >
+      {provider.replace('_', ' ')}
+    </span>
+  );
+}
 
 export function ReposPage() {
   const { projectKey = '' } = useParams<{ projectKey: string }>();
@@ -54,7 +125,9 @@ export function ReposPage() {
   const { can } = useProjectPermissions(projectKey);
 
   const [selectedRepositoryId, setSelectedRepositoryId] = useState<string | null>(null);
-  const [mainTab, setMainTab] = useState<'pull_requests' | 'branches' | 'settings'>('pull_requests');
+  const [mainTab, setMainTab] = useState<'pull_requests' | 'branches' | 'settings'>(
+    'pull_requests',
+  );
   const [prStatusFilter, setPrStatusFilter] = useState<string>('ALL');
   const [prSearchQuery, setPrSearchQuery] = useState('');
 
@@ -73,7 +146,11 @@ export function ReposPage() {
     projectKey,
     selectedRepository?.id ?? null,
   );
-  const { data: pullRequests, isLoading: prsLoading, error: prsError } = usePullRequests(projectKey);
+  const {
+    data: pullRequests,
+    isLoading: prsLoading,
+    error: prsError,
+  } = usePullRequests(projectKey);
 
   const activePullRequestId = prParam ?? null;
   const { data: activePullRequestDetail, isLoading: prDetailLoading } = usePullRequestDetail(
@@ -160,13 +237,15 @@ export function ReposPage() {
   }
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[300px_1fr] bg-surface">
-      {/* Barre latérale des dépôts */}
-      <aside className="border-border-default bg-surface-sunken flex min-h-0 flex-col border-r">
-        <header className="border-border-subtle flex items-center justify-between border-b px-3 py-2.5">
+    <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[300px_1fr]">
+      {/* Colonne des dépôts */}
+      <aside className="flex min-h-0 flex-col gap-3 px-4 pt-5 pb-4 sm:pl-6 md:pr-0 md:pb-6">
+        <header className="flex items-start justify-between gap-2">
           <div>
-            <h1 className="text-ink-900 text-base font-bold">Dépôts Git</h1>
-            <p className="text-ink-400 text-xs">{repositories?.length ?? 0} configuré(s)</p>
+            <h1 className="text-ink-900 text-xl font-bold tracking-tight">Dépôts Git</h1>
+            <p className="text-ink-500 text-sm">
+              {repositories?.length ?? 0} configuré{(repositories?.length ?? 0) > 1 ? 's' : ''}
+            </p>
           </div>
           {can('repo:manage') && (
             <Button
@@ -175,51 +254,58 @@ export function ReposPage() {
               onClick={() => setRepoDialogOpen(true)}
               title="Ajouter un dépôt"
             >
-              <Plus className="size-3.5" />
+              <Plus strokeWidth={2.5} />
               Dépôt
             </Button>
           )}
         </header>
 
-        <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto p-2 space-y-1">
+        <div className="scrollbar-thin -m-1 flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto p-1">
           {(repositories ?? []).length === 0 ? (
-            <EmptyState
-              title="Aucun dépôt"
-              description="Ajoutez le dépôt Git de votre projet pour activer les branches et Pull Requests."
-            />
+            <div className="card">
+              <EmptyState
+                title="Aucun dépôt"
+                description="Ajoutez le dépôt Git de votre projet pour activer les branches et Pull Requests."
+              />
+            </div>
           ) : (
             repositories?.map((repository) => (
               <button
                 key={repository.id}
                 type="button"
                 onClick={() => setSelectedRepositoryId(repository.id)}
+                aria-current={selectedRepository?.id === repository.id ? 'true' : undefined}
                 className={cn(
-                  'hover:bg-surface border-border-subtle group flex w-full flex-col gap-1 rounded-lg border p-2.5 text-left transition-all',
+                  'card group flex w-full flex-col gap-1.5 px-3.5 py-3 text-left transition-colors',
                   selectedRepository?.id === repository.id
-                    ? 'bg-surface border-accent-400 shadow-sm ring-1 ring-accent-400'
-                    : 'bg-surface/60',
+                    ? 'border-accent-400 ring-accent-500/15 ring-3'
+                    : 'hover:border-border-strong',
                 )}
               >
-                <div className="flex items-center justify-between gap-1">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <GitBranch className="text-accent-600 size-4 shrink-0" />
-                    <span className="text-ink-900 font-bold truncate text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <GitBranch className="text-accent-600 size-4 shrink-0" strokeWidth={1.75} />
+                    <span className="text-ink-900 truncate text-base font-semibold">
                       {repository.name}
                     </span>
                   </div>
-                  <span className="bg-surface-sunken text-ink-500 rounded px-1 text-[10px] font-semibold">
-                    {repository.provider}
-                  </span>
+                  <ProviderBadge provider={repository.provider} />
                 </div>
 
                 {repository.description && (
-                  <p className="text-ink-500 line-clamp-1 text-xs">{repository.description}</p>
+                  <p className="text-ink-500 line-clamp-2 text-sm">{repository.description}</p>
                 )}
 
-                <div className="mt-1 flex items-center justify-between text-[11px] text-ink-400">
-                  <span>{repository.branchCount} branche(s)</span>
-                  <span className="font-semibold text-accent-700 dark:text-accent-400">
-                    {repository.pullRequestCount} PR(s)
+                <div className="text-ink-500 mt-0.5 flex items-center gap-4 text-sm">
+                  <span>
+                    {repository.branchCount} branche{repository.branchCount > 1 ? 's' : ''}
+                  </span>
+                  <span
+                    className={cn(
+                      repository.pullRequestCount > 0 && 'text-accent-600 font-semibold',
+                    )}
+                  >
+                    {repository.pullRequestCount} PR{repository.pullRequestCount > 1 ? 's' : ''}
                   </span>
                 </div>
               </button>
@@ -229,32 +315,49 @@ export function ReposPage() {
       </aside>
 
       {/* Contenu principal Dépôt sélectionné */}
-      <main className="flex min-h-0 flex-col overflow-hidden bg-surface">
+      <main className="flex min-h-0 flex-col px-4 pt-5 pb-6 sm:px-6">
         {selectedRepository ? (
-          <>
+          <div className="card flex max-h-full min-h-0 flex-col overflow-hidden">
             {/* En-tête du dépôt sélectionné */}
-            <header className="border-border-default bg-surface border-b px-5 py-3 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-ink-900 text-xl font-bold">{selectedRepository.name}</h2>
-                    <span className="bg-surface-sunken text-ink-600 rounded px-2 py-0.5 text-xs font-semibold">
-                      Branche par défaut : <span className="font-mono font-bold">{selectedRepository.defaultBranch}</span>
+            <header className="border-border-default border-b px-5 pt-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <h2 className="text-ink-900 text-2xl font-bold tracking-tight">
+                      {selectedRepository.name}
+                    </h2>
+                    <span className="bg-surface-sunken text-ink-600 inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium">
+                      <GitBranch className="size-3" strokeWidth={2} />
+                      Branche par défaut :
+                      <span className="text-ink-900 font-mono">
+                        {selectedRepository.defaultBranch}
+                      </span>
                     </span>
                   </div>
-                  <p className="text-ink-500 truncate text-xs mt-0.5">{selectedRepository.url}</p>
+                  {safeHttpUrl(selectedRepository.url) ? (
+                    <a
+                      href={safeHttpUrl(selectedRepository.url) ?? undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-accent-600 hover:text-accent-700 mt-1 block truncate text-sm hover:underline"
+                    >
+                      {selectedRepository.url}
+                    </a>
+                  ) : (
+                    <p className="text-ink-500 mt-1 truncate text-sm">{selectedRepository.url}</p>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2">
                   {can('branch:create') && (
-                    <Button size="sm" onClick={() => setBranchDialogOpen(true)}>
-                      <GitBranch className="size-3.5" />
-                      Nouvelle Branche
+                    <Button onClick={() => setBranchDialogOpen(true)}>
+                      <GitBranch strokeWidth={1.75} />
+                      Nouvelle branche
                     </Button>
                   )}
                   {can('pr:declare') && (
-                    <Button size="sm" variant="primary" onClick={() => setPrDialogOpen(true)}>
-                      <GitPullRequest className="size-3.5" />
+                    <Button variant="primary" onClick={() => setPrDialogOpen(true)}>
+                      <GitPullRequest strokeWidth={1.75} />
                       Créer Pull Request
                     </Button>
                   )}
@@ -262,49 +365,25 @@ export function ReposPage() {
               </div>
 
               {/* Navigation des sous-onglets */}
-              <nav className="mt-3 -mb-3 flex gap-4 border-t border-border-subtle pt-2">
-                <button
-                  type="button"
+              <nav className="mt-4 flex gap-6" aria-label="Sections du dépôt">
+                <RepoTab
+                  active={mainTab === 'pull_requests'}
                   onClick={() => setMainTab('pull_requests')}
-                  className={cn(
-                    'flex items-center gap-1.5 border-b-2 py-2 text-xs font-bold transition-colors',
-                    mainTab === 'pull_requests'
-                      ? 'border-accent-600 text-accent-700 dark:text-accent-400'
-                      : 'border-transparent text-ink-500 hover:text-ink-900',
-                  )}
-                >
-                  <GitPullRequest className="size-3.5" />
-                  Pull Requests ({selectedRepository.pullRequestCount})
-                </button>
-
-                <button
-                  type="button"
+                  label="Pull Requests"
+                  count={selectedRepository.pullRequestCount}
+                />
+                <RepoTab
+                  active={mainTab === 'branches'}
                   onClick={() => setMainTab('branches')}
-                  className={cn(
-                    'flex items-center gap-1.5 border-b-2 py-2 text-xs font-bold transition-colors',
-                    mainTab === 'branches'
-                      ? 'border-accent-600 text-accent-700 dark:text-accent-400'
-                      : 'border-transparent text-ink-500 hover:text-ink-900',
-                  )}
-                >
-                  <GitBranch className="size-3.5" />
-                  Branches ({selectedRepository.branchCount})
-                </button>
-
+                  label="Branches"
+                  count={selectedRepository.branchCount}
+                />
                 {can('repo:manage') && (
-                  <button
-                    type="button"
+                  <RepoTab
+                    active={mainTab === 'settings'}
                     onClick={() => setMainTab('settings')}
-                    className={cn(
-                      'flex items-center gap-1.5 border-b-2 py-2 text-xs font-bold transition-colors',
-                      mainTab === 'settings'
-                        ? 'border-accent-600 text-accent-700 dark:text-accent-400'
-                        : 'border-transparent text-ink-500 hover:text-ink-900',
-                    )}
-                  >
-                    <Settings className="size-3.5" />
-                    Paramètres
-                  </button>
+                    label="Paramètres"
+                  />
                 )}
               </nav>
             </header>
@@ -332,11 +411,12 @@ export function ReposPage() {
                           key={filter.id}
                           type="button"
                           onClick={() => setPrStatusFilter(filter.id)}
+                          aria-pressed={prStatusFilter === filter.id}
                           className={cn(
-                            'rounded-full px-2.5 py-1 text-xs font-semibold transition-colors',
+                            'h-8 rounded-full border px-3.5 text-sm font-medium transition-colors',
                             prStatusFilter === filter.id
-                              ? 'bg-accent-600 text-white'
-                              : 'bg-surface-sunken text-ink-600 hover:bg-surface-muted',
+                              ? 'bg-accent-500 border-accent-500 text-white shadow-raised'
+                              : 'border-border-default bg-surface text-ink-700 hover:border-border-strong hover:text-ink-900',
                           )}
                         >
                           {filter.label}
@@ -344,13 +424,17 @@ export function ReposPage() {
                       ))}
                     </div>
 
-                    <div className="relative min-w-[220px]">
-                      <Search className="text-ink-400 absolute left-2.5 top-2.5 size-3.5" />
-                      <Input
+                    <div className="relative ml-auto w-full sm:w-72">
+                      <Search
+                        className="text-ink-400 pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2"
+                        strokeWidth={2}
+                      />
+                      <input
                         value={prSearchQuery}
                         onChange={(e) => setPrSearchQuery(e.target.value)}
-                        placeholder="Rechercher (#, titre, auteur)..."
-                        className="pl-8 text-xs"
+                        placeholder="Rechercher (#, titre, auteur)…"
+                        aria-label="Rechercher une Pull Request"
+                        className="search-field h-9 pl-9"
                       />
                     </div>
                   </div>
@@ -366,52 +450,62 @@ export function ReposPage() {
                       description="Modifiez vos filtres ou créez une nouvelle Pull Request pour ce dépôt."
                     />
                   ) : (
-                    <div className="border-border-default divide-border-subtle divide-y overflow-hidden rounded-lg border bg-surface shadow-sm">
+                    <div className="divide-border-subtle -mx-5 divide-y">
                       {filteredPullRequests.map((pr) => (
                         <div
                           key={pr.id}
+                          role="button"
+                          tabIndex={0}
                           onClick={() => handleSelectPr(pr.id)}
-                          className="hover:bg-surface-muted/70 group flex cursor-pointer items-center justify-between gap-4 p-3.5 transition-colors"
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              handleSelectPr(pr.id);
+                            }
+                          }}
+                          className="hover:bg-surface-muted group flex cursor-pointer items-center gap-4 px-5 py-3.5 transition-colors"
                         >
+                          <PrStatusIcon status={pr.status} />
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="bg-surface-sunken border-border-subtle font-mono text-ink-800 dark:text-ink-200 rounded border px-1.5 py-0.5 text-xs font-bold">
-                                #{pr.number}
-                              </span>
-                              <span className="text-ink-900 group-hover:text-accent-700 font-bold truncate text-sm">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <span className="text-ink-500 text-sm">#{pr.number}</span>
+                              <span className="text-ink-900 group-hover:text-accent-700 truncate text-base font-semibold">
                                 {pr.title}
                               </span>
                               <PrStatusBadge status={pr.status} />
                             </div>
 
-                            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-ink-500">
-                              <span className="bg-surface-sunken rounded px-1.5 py-0.2 font-mono font-semibold text-ink-700 dark:text-ink-300">
+                            <div className="text-ink-500 mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                              <span className="bg-accent-50 text-accent-700 rounded-md px-1.5 py-px font-mono text-xs font-semibold">
                                 {pr.workItem.key}
                               </span>
-                              <span>·</span>
-                              <span className="font-mono text-ink-700 dark:text-ink-300">
-                                {pr.sourceBranch.name} → {pr.targetBranch?.name ?? pr.targetBranchName ?? 'main'}
+                              <span className="text-ink-700 inline-flex items-center gap-1.5 font-mono text-xs">
+                                {pr.sourceBranch.name}
+                                <ArrowRight className="text-ink-400 size-3" />
+                                {pr.targetBranch?.name ?? pr.targetBranchName ?? 'main'}
                               </span>
-                              <span>·</span>
-                              <span>
-                                Ouverte par <span className="font-semibold text-ink-800 dark:text-ink-200">{pr.declaredBy.name}</span>
-                              </span>
-                              <span>·</span>
+                              <span aria-hidden="true">·</span>
+                              <span>Ouverte par {pr.declaredBy.name}</span>
+                              <span aria-hidden="true">·</span>
                               <span className="flex items-center gap-1">
-                                <Clock className="size-3" />
+                                <Clock className="size-3.5" strokeWidth={1.75} />
                                 {new Date(pr.createdAt).toLocaleDateString('fr-FR')}
                               </span>
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2">
-                            {pr.reviewedBy && (
-                              <span className="text-ink-400 text-xs hidden sm:inline">
-                                Revue : {pr.reviewedBy.name}
+                          <div className="hidden shrink-0 flex-col items-end gap-1 sm:flex">
+                            <span className="text-ink-500 text-xs">Revue</span>
+                            {pr.reviewedBy ? (
+                              <span className="text-ink-900 flex items-center gap-1.5 text-sm font-medium">
+                                <Avatar name={pr.reviewedBy.name} size="xs" />
+                                {pr.reviewedBy.name}
                               </span>
+                            ) : (
+                              <span className="text-ink-500 text-sm">Non assignée</span>
                             )}
-                            <ArrowRight className="text-ink-400 group-hover:text-ink-900 size-4 transition-transform group-hover:translate-x-0.5" />
                           </div>
+                          <ChevronRight className="text-ink-400 group-hover:text-ink-900 size-4 shrink-0 transition-transform group-hover:translate-x-0.5" />
                         </div>
                       ))}
                     </div>
@@ -427,8 +521,8 @@ export function ReposPage() {
                   ) : (branches ?? []).length === 0 ? (
                     <EmptyState title="Aucune branche enregistrée" />
                   ) : (
-                    <div className="border-border-default divide-border-subtle divide-y overflow-hidden rounded-lg border bg-surface shadow-sm">
-                      <div className="bg-surface-muted grid grid-cols-[1fr_120px_180px_100px] gap-2 px-4 py-2 text-xs font-bold text-ink-600">
+                    <div className="border-border-default divide-border-subtle divide-y overflow-hidden rounded-xl border">
+                      <div className="bg-surface-muted text-ink-500 grid grid-cols-[1fr_120px_180px_100px] gap-2 px-4 py-2.5 text-[11px] font-semibold tracking-wider uppercase">
                         <span>Nom de la branche</span>
                         <span>Type</span>
                         <span>Créateur & Date</span>
@@ -445,33 +539,30 @@ export function ReposPage() {
                         return (
                           <div
                             key={branch.id}
-                            className="grid grid-cols-[1fr_120px_180px_100px] items-center gap-2 px-4 py-2.5 text-xs"
+                            className="hover:bg-surface-muted grid grid-cols-[1fr_120px_180px_100px] items-center gap-2 px-4 py-3 text-sm"
                           >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <GitBranch className="text-accent-600 size-4 shrink-0" />
-                              <span className="font-mono font-bold text-ink-900 dark:text-ink-100 truncate">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <GitBranch
+                                className="text-accent-600 size-4 shrink-0"
+                                strokeWidth={1.75}
+                              />
+                              <span className="text-ink-900 truncate font-mono text-[13px] font-medium">
                                 {branch.name}
                               </span>
-                              {isDefault && (
-                                <span className="bg-accent-100 text-accent-800 dark:bg-accent-950 dark:text-accent-300 rounded px-1.5 py-0.2 text-[10px] font-bold">
-                                  Défaut
-                                </span>
-                              )}
+                              {isDefault && <Badge tone="accent">Défaut</Badge>}
                               {branch.isProtected && (
-                                <span className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 flex items-center gap-0.5 rounded px-1.5 py-0.2 text-[10px] font-bold">
-                                  <Shield className="size-2.5" />
+                                <Badge tone="success">
+                                  <Shield className="size-3" strokeWidth={2} />
                                   Protégée
-                                </span>
+                                </Badge>
                               )}
                             </div>
 
                             <div>
                               {branch.isLocalOnly ? (
-                                <span className="bg-amber-50 text-amber-800 border-amber-200 rounded border px-1.5 py-0.5 text-[10px] font-semibold">
-                                  Locale
-                                </span>
+                                <Badge tone="warning">Locale</Badge>
                               ) : (
-                                <span className="text-ink-500 text-xs">Distante</span>
+                                <span className="text-ink-500 text-sm">Distante</span>
                               )}
                             </div>
 
@@ -510,12 +601,14 @@ export function ReposPage() {
                 />
               )}
             </div>
-          </>
+          </div>
         ) : (
-          <EmptyState
-            title="Aucun dépôt sélectionné"
-            description="Sélectionnez un dépôt dans le panneau latéral ou ajoutez-en un nouveau."
-          />
+          <div className="card">
+            <EmptyState
+              title="Aucun dépôt sélectionné"
+              description="Sélectionnez un dépôt dans le panneau latéral ou ajoutez-en un nouveau."
+            />
+          </div>
         )}
       </main>
 
@@ -586,7 +679,9 @@ function RepositorySettingsView({
   };
 
   const handleDelete = async () => {
-    if (confirm(`Êtes-vous certain de vouloir supprimer définitivement le dépôt ${repository.name} ?`)) {
+    if (
+      confirm(`Êtes-vous certain de vouloir supprimer définitivement le dépôt ${repository.name} ?`)
+    ) {
       await deleteRepo.mutateAsync(repository.id);
       onDeleted();
     }
@@ -694,7 +789,9 @@ function CreateRepositoryDialog({
       width="md"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Annuler</Button>
+          <Button variant="ghost" onClick={onClose}>
+            Annuler
+          </Button>
           <Button variant="primary" onClick={submit} loading={createRepository.isPending}>
             Créer le dépôt
           </Button>
@@ -735,7 +832,9 @@ function CreateRepositoryDialog({
               onChange={(e) => setProvider(e.target.value as GitProvider)}
             >
               {Object.values(GitProvider).map((value) => (
-                <option key={value} value={value}>{value}</option>
+                <option key={value} value={value}>
+                  {value}
+                </option>
               ))}
             </Select>
           </Field>
@@ -781,7 +880,9 @@ function CreateBranchDialog({
       onClose={onClose}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Annuler</Button>
+          <Button variant="ghost" onClick={onClose}>
+            Annuler
+          </Button>
           <Button variant="primary" onClick={submit} loading={createBranch.isPending}>
             Créer la branche
           </Button>
@@ -865,7 +966,9 @@ function CreatePullRequestDialog({
       width="md"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Annuler</Button>
+          <Button variant="ghost" onClick={onClose}>
+            Annuler
+          </Button>
           <Button variant="primary" onClick={submit} loading={createPullRequest.isPending}>
             Créer la Pull Request
           </Button>
@@ -908,7 +1011,9 @@ function CreatePullRequestDialog({
             >
               <option value="">Sélectionner source...</option>
               {branches.map((b) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
               ))}
             </Select>
           </Field>

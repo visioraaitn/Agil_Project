@@ -60,7 +60,7 @@ export class WorkItemsController {
   }
 
   @Get('board')
-  @ApiOperation({ summary: 'Task Board : tickets répartis dans les 5 colonnes' })
+  @ApiOperation({ summary: 'Task Board : tickets répartis dans les colonnes configurées du projet' })
   getBoard(
     @ProjectId() projectId: string,
     @Query(new ZodValidationPipe(workItemFiltersSchema)) filters: WorkItemFilters,
@@ -151,7 +151,7 @@ export class WorkItemsController {
     @Body(new ZodValidationPipe(moveWorkItemSchema)) dto: MoveWorkItemInput,
   ): Promise<WorkItemSummary> {
     // Le statut ne se change pas depuis le backlog : c'est le rôle du board.
-    return this.workItems.move(projectId, itemId, { ...dto, status: undefined });
+    return this.workItems.move(projectId, itemId, { ...dto, status: undefined, columnId: undefined });
   }
 
   @Delete('work-items/:itemId')

@@ -33,8 +33,7 @@ export function EmptyState({
 
 /** Affiche le message métier renvoyé par l'API plutôt qu'une erreur générique. */
 export function ErrorState({ error }: { error: unknown }) {
-  const message =
-    error instanceof ApiError ? error.message : 'Une erreur inattendue est survenue';
+  const message = error instanceof ApiError ? error.message : 'Une erreur inattendue est survenue';
 
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
@@ -54,7 +53,10 @@ export function InlineError({ error }: { error: unknown }) {
   if (!error) return null;
   const message = error instanceof ApiError ? error.message : 'Une erreur est survenue';
   return (
-    <p role="alert" className="bg-red-50 text-danger rounded px-2 py-1.5 text-base">
+    <p
+      role="alert"
+      className="bg-red-50 text-danger rounded-lg border border-red-100 px-3 py-2 text-base dark:border-red-900/50 dark:bg-red-950/40"
+    >
       {message}
     </p>
   );

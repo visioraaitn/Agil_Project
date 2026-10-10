@@ -8,8 +8,8 @@ import {
   LogOut,
   Menu,
   Moon,
-  Settings,
   Shield,
+  SlidersHorizontal,
   Sun,
   UserCog,
   Users,
@@ -23,14 +23,17 @@ import {
   useNotifications,
   useRealtimeNotifications,
 } from '@/features/collaboration/hooks';
-import { GlobalSearchBox } from '@/features/search/GlobalSearchBox';
 import { useTheme } from '@/lib/use-theme';
+import { cn } from '@/lib/utils';
+
+const ICON_BUTTON =
+  'text-ink-600 hover:text-ink-900 hover:bg-surface-sunken relative flex size-9 items-center justify-center rounded-lg transition-colors';
 
 const API_DOCS_URL = import.meta.env.DEV
   ? (import.meta.env.VITE_API_DOCS_URL ?? 'http://localhost:3000/api/v1/docs')
   : null;
 
-/** Barre superieure : recherche globale, notifications, compte. */
+/** Barre superieure : thème, notifications, paramètres et compte. */
 export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   const { user, logout, canManageUsers } = useAuth();
   const { isDark, toggleTheme } = useTheme();
@@ -46,6 +49,11 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   useRealtimeNotifications(Boolean(user));
   const markRead = useMarkNotificationRead();
   const unreadCount = (notifications ?? []).filter((notification) => !notification.isRead).length;
+  const roleLabel = user?.isSuperAdmin
+    ? 'Super administrateur'
+    : canManageUsers
+      ? 'Administrateur'
+      : (user?.jobTitle ?? 'Membre');
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -80,52 +88,50 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   };
 
   return (
-    <header className="border-border-default bg-surface flex h-10 shrink-0 items-center gap-3 border-b px-3">
+    <header className="border-border-default bg-surface flex h-15 shrink-0 items-center gap-2 border-b px-3 sm:px-6">
       <button
         type="button"
         onClick={onOpenSidebar}
-        className="text-ink-500 hover:text-ink-900 hover:bg-surface-sunken rounded p-1 transition-colors md:hidden"
+        className={cn(ICON_BUTTON, 'md:hidden')}
         aria-label="Ouvrir la navigation"
       >
         <Menu className="size-5" strokeWidth={1.75} />
       </button>
-      <span className="text-ink-900 text-lg font-semibold tracking-tight">
-        visio<span className="text-accent-500">Planner</span>
-      </span>
 
-      <GlobalSearchBox />
+      <div className="flex-1" />
 
       <button
         type="button"
         onClick={toggleTheme}
-        className="text-ink-500 hover:text-ink-900 hover:bg-surface-sunken rounded p-1 transition-colors"
+        className={ICON_BUTTON}
         aria-label={isDark ? 'Passer en mode clair' : 'Passer en mode sombre'}
         title={isDark ? 'Passer en mode clair' : 'Passer en mode sombre'}
       >
         {isDark ? (
-          <Sun className="size-4 text-amber-400" strokeWidth={1.75} />
+          <Sun className="size-[18px] text-amber-400" strokeWidth={1.75} />
         ) : (
-          <Moon className="size-4" strokeWidth={1.75} />
+          <Moon className="size-[18px]" strokeWidth={1.75} />
         )}
       </button>
 
       <div ref={notificationsRef} className="relative">
         <button
           type="button"
-          className="text-ink-500 hover:bg-surface-sunken relative rounded p-1"
-          aria-label="Notifications"
+          className={ICON_BUTTON}
+          aria-label={unreadCount > 0 ? `Notifications (${unreadCount} non lues)` : 'Notifications'}
           onClick={() => setNotificationsOpen((open) => !open)}
         >
-          <Bell className="size-4" strokeWidth={1.75} />
+          <Bell className="size-[18px]" strokeWidth={1.75} />
           {unreadCount > 0 && (
-            <span className="bg-danger absolute -right-0.5 -top-0.5 flex size-3.5 items-center justify-center rounded-full text-[9px] font-bold text-white">
-              {unreadCount}
-            </span>
+            <span
+              className="bg-accent-500 ring-surface absolute top-2 right-2 size-2 rounded-full ring-2"
+              title={`${unreadCount} non lue(s)`}
+            />
           )}
         </button>
 
         {notificationsOpen && (
-          <div className="border-border-default bg-surface absolute right-0 top-full z-40 mt-1 w-80 rounded border shadow-lg">
+          <div className="border-border-default bg-surface absolute right-0 top-full z-40 mt-1.5 w-80 overflow-hidden rounded-xl border shadow-pop">
             <div className="border-border-subtle border-b px-3 py-2">
               <p className="text-ink-900 text-base font-semibold">Notifications</p>
             </div>
@@ -168,20 +174,20 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
       <div ref={settingsRef} className="relative">
         <button
           type="button"
-          className="text-ink-500 hover:bg-surface-sunken rounded p-1"
+          className={ICON_BUTTON}
           aria-label="Parametres"
           aria-expanded={settingsOpen}
           aria-haspopup="menu"
           title="Parametres"
           onClick={() => setSettingsOpen((open) => !open)}
         >
-          <Settings className="size-4" strokeWidth={1.75} />
+          <SlidersHorizontal className="size-[18px]" strokeWidth={1.75} />
         </button>
 
         {settingsOpen && (
           <div
             role="menu"
-            className="border-border-default bg-surface absolute right-0 top-full z-40 mt-1 w-72 rounded border shadow-lg"
+            className="border-border-default bg-surface absolute right-0 top-full z-40 mt-1.5 w-72 overflow-hidden rounded-xl border shadow-pop"
           >
             <div className="border-border-subtle border-b px-3 py-2">
               <p className="text-ink-900 text-base font-semibold">Parametres</p>
@@ -246,6 +252,8 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         )}
       </div>
 
+      <span className="bg-border-default mx-2 hidden h-7 w-px sm:block" aria-hidden="true" />
+
       <div ref={menuRef} className="relative">
         <button
           type="button"
@@ -253,14 +261,21 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
           aria-expanded={menuOpen}
           aria-haspopup="menu"
           aria-label={`Compte de ${user?.name ?? ''}`}
+          className="hover:bg-surface-sunken flex items-center gap-2.5 rounded-lg py-1 pr-2 pl-1 text-left transition-colors"
         >
-          <Avatar name={user?.name ?? '?'} avatarUrl={user?.avatarUrl} />
+          <Avatar name={user?.name ?? '?'} avatarUrl={user?.avatarUrl} size="md" />
+          <span className="hidden min-w-0 leading-tight lg:block">
+            <span className="text-ink-900 block max-w-40 truncate text-base font-semibold">
+              {user?.name}
+            </span>
+            <span className="text-ink-500 block max-w-40 truncate text-xs">{roleLabel}</span>
+          </span>
         </button>
 
         {menuOpen && (
           <div
             role="menu"
-            className="border-border-default bg-surface absolute right-0 top-full z-40 mt-1 w-56 rounded border shadow-lg"
+            className="border-border-default bg-surface absolute right-0 top-full z-40 mt-1.5 w-56 overflow-hidden rounded-xl border shadow-pop"
           >
             <div className="border-border-subtle border-b px-3 py-2">
               <p className="text-ink-900 truncate text-base font-semibold">{user?.name}</p>

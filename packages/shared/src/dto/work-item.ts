@@ -5,22 +5,64 @@ import type { UserDirectoryEntry } from './user';
 import type { TagSummary } from './tag';
 
 /**
- * C.1 · Hiérarchie autorisée. Un EPIC est toujours racine ; une SUBTASK est
- * toujours rattachée. Cette table est la seule autorité — le service la
- * consulte avant d'accepter un `parentId`.
+ * C.1 · Hiérarchie autorisée. Un EPIC est toujours racine ; une STORY se range
+ * sous un EPIC ; une SUBTASK et un BUG appartiennent toujours à une STORY — ce
+ * sont les cartes du Task Board, la STORY en est la ligne. Cette table est la
+ * seule autorité — le service la consulte avant d'accepter un `parentId`.
  */
 export const ALLOWED_PARENT_TYPES: Record<WorkItemType, readonly WorkItemType[]> = {
   [WorkItemType.EPIC]: [],
   [WorkItemType.STORY]: [WorkItemType.EPIC],
-  [WorkItemType.BUG]: [WorkItemType.EPIC],
-  [WorkItemType.SUBTASK]: [WorkItemType.STORY, WorkItemType.BUG],
+  [WorkItemType.BUG]: [WorkItemType.STORY],
+  [WorkItemType.SUBTASK]: [WorkItemType.STORY],
 };
 
 /** Types dont le parent est obligatoire. */
-export const REQUIRES_PARENT: readonly WorkItemType[] = [WorkItemType.SUBTASK];
+export const REQUIRES_PARENT: readonly WorkItemType[] = [WorkItemType.SUBTASK, WorkItemType.BUG];
 
 export function canBeChildOf(childType: WorkItemType, parentType: WorkItemType): boolean {
   return ALLOWED_PARENT_TYPES[childType].includes(parentType);
+}
+
+/** Cartes du Task Board : les sous-tâches et bugs d'une User Story. */
+export const BOARD_CARD_TYPES: readonly WorkItemType[] = [WorkItemType.SUBTASK, WorkItemType.BUG];
+
+/**
+ * D.1 · Enfants dont le statut fait avancer un parent : les cartes d'une
+ * User Story, les User Stories d'un Epic. Les autres types n'ont pas de statut
+ * déduit.
+ */
+export const STATUS_ROLLUP_CHILD_TYPES: Partial<Record<WorkItemType, readonly WorkItemType[]>> = {
+  [WorkItemType.STORY]: BOARD_CARD_TYPES,
+  [WorkItemType.EPIC]: [WorkItemType.STORY],
+};
+
+/**
+ * D.1 · Statut d'un parent (User Story ou Epic) déduit de ses enfants.
+ * Renvoie le statut à appliquer, ou `null` si le parent doit rester tel quel :
+ * - tous les enfants terminés → « Terminé » ;
+ * - parent « Terminé » avec un enfant non terminé → « En cours » ;
+ * - parent « À faire » avec un enfant engagé (hors « À faire ») → « En cours ».
+ * Sans enfant, rien n'est déduit : le parent garde le statut posé à la main.
+ */
+export function deriveParentStatus(
+  current: WorkItemStatus,
+  childStatuses: readonly WorkItemStatus[],
+): WorkItemStatus | null {
+  if (childStatuses.length === 0) return null;
+
+  let target: WorkItemStatus = current;
+  if (childStatuses.every((status) => status === WorkItemStatus.DONE)) {
+    target = WorkItemStatus.DONE;
+  } else if (current === WorkItemStatus.DONE) {
+    target = WorkItemStatus.IN_PROGRESS;
+  } else if (
+    current === WorkItemStatus.TODO &&
+    childStatuses.some((status) => status !== WorkItemStatus.TODO)
+  ) {
+    target = WorkItemStatus.IN_PROGRESS;
+  }
+  return target === current ? null : target;
 }
 
 const isoDate = z.coerce.date();
@@ -45,7 +87,7 @@ export const createWorkItemSchema = z
     dueDate: isoDate.nullable().optional(),
   })
   .refine((value) => !REQUIRES_PARENT.includes(value.type) || Boolean(value.parentId), {
-    message: 'Une sous-tâche doit être rattachée à une user story ou à un bug',
+    message: 'Une sous-tâche ou un bug doit être rattaché à une user story',
     path: ['parentId'],
   });
 export type CreateWorkItemInput = z.infer<typeof createWorkItemSchema>;
@@ -109,6 +151,12 @@ export interface SprintPropagationConflict {
  */
 export const moveWorkItemSchema = z.object({
   confirmSprintPropagation: z.boolean().optional(),
+  /**
+   * Colonne de destination sur le board. Elle fixe à la fois le statut (celui
+   * de la colonne) et la colonne d'affichage — indispensable dès que plusieurs
+   * colonnes partagent un même statut. Prioritaire sur `status`.
+   */
+  columnId: uuidSchema.optional(),
   status: z.nativeEnum(WorkItemStatus).optional(),
   parentId: uuidSchema.nullable().optional(),
   sprintId: uuidSchema.nullable().optional(),
@@ -187,6 +235,8 @@ export interface WorkItemSummary {
   blockedReason: string | null;
   parentId: string | null;
   sprintId: string | null;
+  /** Colonne personnalisée du board ; `null` = colonne par défaut de son statut. */
+  boardColumnId: string | null;
   startDate: string | null;
   dueDate: string | null;
   /** Premier assigné conservé pour compatibilité avec les anciens écrans. */
@@ -216,9 +266,46 @@ export interface BacklogNode extends WorkItemSummary {
   children: BacklogNode[];
 }
 
-export interface BoardColumn {
+/**
+ * D.1 · Colonne du board, persistée par projet. Chaque colonne porte un statut
+ * du workflow ; les colonnes par défaut (une par statut) ne se suppriment pas,
+ * les colonnes personnalisées affinent un statut sans le remplacer.
+ */
+export interface BoardColumnConfig {
+  id: string;
+  name: string;
   status: WorkItemStatus;
+  /** Colonne par défaut de son statut : non supprimable, statut figé. */
+  isDefault: boolean;
+  position: number;
+  wipLimit: number | null;
+  isVisible: boolean;
+}
+
+/** Colonne du board avec ses cartes : un ticket n'apparaît que dans une seule colonne. */
+export interface BoardColumn extends BoardColumnConfig {
   items: WorkItemSummary[];
   count: number;
   points: number;
 }
+
+export const boardColumnInputSchema = z.object({
+  /** Absent pour une nouvelle colonne personnalisée. */
+  id: uuidSchema.optional(),
+  name: z.string().trim().min(1, 'Le nom de la colonne est obligatoire').max(60),
+  status: z.nativeEnum(WorkItemStatus),
+  wipLimit: z.number().int().min(1).max(999).nullable().optional(),
+  isVisible: z.boolean().default(true),
+});
+export type BoardColumnInput = z.infer<typeof boardColumnInputSchema>;
+
+/**
+ * Configuration complète des colonnes, dans l'ordre d'affichage. Comme les
+ * étiquettes, elle se remplace en bloc : le client envoie l'état voulu. Une
+ * colonne personnalisée absente de la liste est supprimée (ses tickets
+ * retombent dans la colonne par défaut de leur statut).
+ */
+export const saveBoardColumnsSchema = z.object({
+  columns: z.array(boardColumnInputSchema).min(1).max(30),
+});
+export type SaveBoardColumnsInput = z.infer<typeof saveBoardColumnsSchema>;

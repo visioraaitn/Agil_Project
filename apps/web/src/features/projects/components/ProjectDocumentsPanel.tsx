@@ -57,42 +57,54 @@ export function ProjectDocumentsPanel({ projectRef, canManage }: ProjectDocument
   };
 
   return (
-    <section className="border-border-default bg-surface rounded border">
-      <header className="border-border-subtle flex items-center gap-2 border-b px-3 py-2">
-        <FileText className="text-ink-500 size-4" strokeWidth={1.75} />
+    <section className="card px-5 py-4">
+      <header className="flex items-center gap-2">
+        <FileText className="text-ink-600 size-[18px]" strokeWidth={1.75} />
         <h2 className="text-ink-900 text-lg font-semibold">Documents du projet</h2>
-        <span className="text-ink-400 text-sm">{documents?.length ?? 0}</span>
-        {canManage && (
-          <label className="text-accent-700 hover:bg-accent-50 ml-auto flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-sm font-semibold">
-            <Upload className="size-3.5" strokeWidth={1.75} />
-            Ajouter des PDF
-            <input
-              type="file"
-              accept="application/pdf,.pdf"
-              multiple
-              className="sr-only"
-              disabled={upload.isPending}
-              onChange={(event) => void uploadFiles(event)}
-            />
-          </label>
-        )}
+        <span className="count-pill ml-auto">{documents?.length ?? 0}</span>
       </header>
 
       {isLoading ? (
         <LoadingState label="Chargement des documents…" />
       ) : (
-        <div className="divide-border-subtle divide-y">
-          {(documents ?? []).length === 0 && (
-            <p className="text-ink-400 px-3 py-5 text-center text-sm">
+        <div className="mt-3 flex flex-col gap-2">
+          {canManage && (
+            <label className="border-accent-200 bg-accent-50/50 hover:bg-accent-50 flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed px-4 py-6 text-center transition-colors">
+              <span className="bg-accent-100 text-accent-600 flex size-10 items-center justify-center rounded-lg">
+                <Upload className="size-[18px]" strokeWidth={1.75} />
+              </span>
+              <span className="text-accent-700 text-base font-semibold">
+                {upload.isPending ? 'Envoi en cours…' : 'Ajouter des PDF'}
+              </span>
+              {(documents ?? []).length === 0 && (
+                <span className="text-ink-500 text-sm">Aucun document PDF joint au projet.</span>
+              )}
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                multiple
+                className="sr-only"
+                disabled={upload.isPending}
+                onChange={(event) => void uploadFiles(event)}
+              />
+            </label>
+          )}
+          {!canManage && (documents ?? []).length === 0 && (
+            <p className="text-ink-500 py-4 text-center text-sm">
               Aucun document PDF joint au projet.
             </p>
           )}
           {(documents ?? []).map((document) => (
-            <div key={document.id} className="flex items-center gap-2 px-3 py-2">
-              <FileText className="text-danger size-4 shrink-0" strokeWidth={1.75} />
+            <div
+              key={document.id}
+              className="border-border-default flex items-center gap-3 rounded-lg border px-3 py-2"
+            >
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-red-50 text-danger dark:bg-red-950/40">
+                <FileText className="size-4" strokeWidth={1.75} />
+              </span>
               <div className="min-w-0 flex-1">
                 <p className="text-ink-900 truncate text-sm font-semibold">{document.fileName}</p>
-                <p className="text-ink-400 text-xs">
+                <p className="text-ink-500 text-xs">
                   {formatSize(document.sizeBytes)} · ajouté par {document.uploadedBy.name} ·{' '}
                   {new Date(document.createdAt).toLocaleDateString('fr-FR')}
                 </p>
@@ -122,7 +134,7 @@ export function ProjectDocumentsPanel({ projectRef, canManage }: ProjectDocument
       )}
 
       {Boolean(error) && (
-        <div className="px-3 py-2">
+        <div className="pt-3">
           <InlineError error={error} />
         </div>
       )}

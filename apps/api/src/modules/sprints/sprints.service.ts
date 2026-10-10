@@ -4,8 +4,10 @@ import {
   CreateSprintInput,
   ListSprintsQuery,
   RoadmapEpic,
+  SprintDateIssue,
   SprintDetail,
   SprintStatus,
+  startOfUtcDay,
   UnfinishedItemsAction,
   UpdateRetrospectiveInput,
   UpdateSprintInput,
@@ -47,6 +49,7 @@ export class SprintsService {
   }
 
   async create(projectId: string, input: CreateSprintInput): Promise<SprintDetail> {
+    this.assertNotInPast(input.startDate, SprintDateIssue.START_IN_PAST);
     await this.assertNoDateOverlap(projectId, input.startDate, input.endDate);
 
     const sprint = await this.prisma.sprint.create({
@@ -81,9 +84,23 @@ export class SprintsService {
       });
     }
 
+    // Seules les dates modifiées sont contrôlées : un sprint actif commencé hier
+    // reste modifiable (nom, objectif, prolongation) sans toucher à son début.
     const startDate = input.startDate ?? existing.startDate;
     const endDate = input.endDate ?? existing.endDate;
-    await this.assertNoDateOverlap(projectId, startDate, endDate, sprintId);
+    const changesStart = !sameDay(startDate, existing.startDate);
+    const changesEnd = !sameDay(endDate, existing.endDate);
+    if (startDate > endDate) {
+      throw new BadRequestException({
+        code: 'SPRINT_INVALID_DATES',
+        message: 'La date de fin doit etre posterieure a la date de debut',
+      });
+    }
+    if (changesStart) this.assertNotInPast(startDate, SprintDateIssue.START_IN_PAST);
+    if (changesEnd) this.assertNotInPast(endDate, SprintDateIssue.END_IN_PAST);
+    if (changesStart || changesEnd) {
+      await this.assertNoDateOverlap(projectId, startDate, endDate, sprintId);
+    }
 
     if (input.status === SprintStatus.ACTIVE) {
       const activeSprint = await this.prisma.sprint.findFirst({
@@ -152,10 +169,8 @@ export class SprintsService {
       });
       const committedPoints = items.reduce((total, item) => total + (item.storyPoints ?? 0), 0);
       const unfinished = items.filter((item) => item.status !== WorkItemStatus.DONE);
-      const completedPoints = committedPoints - unfinished.reduce(
-        (total, item) => total + (item.storyPoints ?? 0),
-        0,
-      );
+      const completedPoints =
+        committedPoints - unfinished.reduce((total, item) => total + (item.storyPoints ?? 0), 0);
 
       if (unfinished.length > 0 && !input.unfinishedItemsAction) {
         throw new BadRequestException({
@@ -165,12 +180,18 @@ export class SprintsService {
         });
       }
 
-      if (unfinished.length > 0 && input.unfinishedItemsAction === UnfinishedItemsAction.MOVE_TO_SPRINT) {
+      if (
+        unfinished.length > 0 &&
+        input.unfinishedItemsAction === UnfinishedItemsAction.MOVE_TO_SPRINT
+      ) {
         await tx.workItem.updateMany({
           where: { id: { in: unfinished.map((item) => item.id) } },
           data: { sprintId: input.targetSprintId },
         });
-      } else if (unfinished.length > 0 && input.unfinishedItemsAction === UnfinishedItemsAction.BACKLOG) {
+      } else if (
+        unfinished.length > 0 &&
+        input.unfinishedItemsAction === UnfinishedItemsAction.BACKLOG
+      ) {
         // Ne touche jamais parentId : seule l'affectation au sprint change, la hiérarchie reste intacte.
         await tx.workItem.updateMany({
           where: { id: { in: unfinished.map((item) => item.id) } },
@@ -263,6 +284,20 @@ export class SprintsService {
     if (!exists) throw this.notFound();
   }
 
+  /** Un sprint ne se planifie pas dans le passé : la date doit être aujourd'hui ou après. */
+  private assertNotInPast(date: Date, code: SprintDateIssue): void {
+    if (startOfUtcDay(date) < startOfUtcDay()) {
+      throw new BadRequestException({
+        code,
+        message:
+          code === SprintDateIssue.START_IN_PAST
+            ? "La date de début doit être aujourd'hui ou plus tard"
+            : "La date de fin doit être aujourd'hui ou plus tard",
+      });
+    }
+  }
+
+  /** Deux sprints d'un projet ne partagent aucun jour, quel que soit leur statut. */
   private async assertNoDateOverlap(
     projectId: string,
     startDate: Date,
@@ -273,16 +308,16 @@ export class SprintsService {
       where: {
         projectId,
         ...(exceptSprintId ? { id: { not: exceptSprintId } } : {}),
-        status: { not: SprintStatus.COMPLETED },
         startDate: { lte: endDate },
         endDate: { gte: startDate },
       },
-      select: { id: true },
+      select: { name: true, startDate: true, endDate: true },
+      orderBy: { startDate: 'asc' },
     });
     if (overlap) {
       throw new BadRequestException({
-        code: 'SPRINT_DATES_OVERLAP',
-        message: 'Les dates chevauchent un sprint actif ou planifie',
+        code: SprintDateIssue.OVERLAP,
+        message: `Ces dates chevauchent le sprint « ${overlap.name} » (${formatDay(overlap.startDate)} – ${formatDay(overlap.endDate)})`,
       });
     }
   }
@@ -290,6 +325,19 @@ export class SprintsService {
   private notFound(): NotFoundException {
     return new NotFoundException({ code: 'SPRINT_NOT_FOUND', message: "Ce sprint n'existe pas" });
   }
+}
+
+function sameDay(a: Date, b: Date): boolean {
+  return startOfUtcDay(a).getTime() === startOfUtcDay(b).getTime();
+}
+
+function formatDay(date: Date): string {
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date);
 }
 
 function pick<T extends object, K extends keyof T>(

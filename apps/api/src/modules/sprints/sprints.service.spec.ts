@@ -1,4 +1,9 @@
-import { SprintStatus, UnfinishedItemsAction, WorkItemStatus } from '@visiora/shared';
+import {
+  SprintStatus,
+  UnfinishedItemsAction,
+  WorkItemStatus,
+  startOfUtcDay,
+} from '@visiora/shared';
 import { SprintsService } from './sprints.service';
 
 describe('SprintsService.update', () => {
@@ -11,10 +16,10 @@ describe('SprintsService.update', () => {
     };
     const prisma = {
       sprint: {
+        // Dates inchangées : pas de contrôle de chevauchement, seulement le sprint actif.
         findFirst: jest
           .fn()
           .mockResolvedValueOnce(plannedSprint)
-          .mockResolvedValueOnce(null)
           .mockResolvedValueOnce({ id: 'sprint-active' }),
         update: jest.fn(),
       },
@@ -47,16 +52,16 @@ describe('SprintsService.close', () => {
     };
     const prisma = {
       sprint: {
-        findFirst: jest.fn(
-          (): unknown => options.sprintFindFirstResults.shift() ?? null,
-        ),
+        findFirst: jest.fn((): unknown => options.sprintFindFirstResults.shift() ?? null),
       },
       $transaction: jest.fn((operation: (client: typeof tx) => unknown) => operation(tx)),
     };
     const service = new SprintsService(
       prisma as unknown as ConstructorParameters<typeof SprintsService>[0],
     );
-    jest.spyOn(service, 'getById').mockResolvedValue({} as Awaited<ReturnType<typeof service.getById>>);
+    jest
+      .spyOn(service, 'getById')
+      .mockResolvedValue({} as Awaited<ReturnType<typeof service.getById>>);
     return { service, prisma, tx };
   }
 
@@ -169,7 +174,7 @@ describe('SprintsService.close', () => {
     ).rejects.toMatchObject({ response: { code: 'INVALID_TARGET_SPRINT' } });
   });
 
-  it("refuse un sprint cible hors du projet", async () => {
+  it('refuse un sprint cible hors du projet', async () => {
     const { service } = buildService({
       sprintFindFirstResults: [{ id: SPRINT_ID, status: SprintStatus.ACTIVE }, null],
       items: [{ id: 'item-1', storyPoints: 1, status: WorkItemStatus.TODO }],
@@ -178,5 +183,93 @@ describe('SprintsService.close', () => {
     await expect(
       service.close(PROJECT_ID, SPRINT_ID, { targetSprintId: 'sprint-2' }),
     ).rejects.toMatchObject({ response: { code: 'INVALID_TARGET_SPRINT' } });
+  });
+});
+
+describe('SprintsService — règles de dates', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const today = startOfUtcDay();
+  const inDays = (days: number) => new Date(today.getTime() + days * DAY);
+
+  function serviceWith(findFirst: jest.Mock) {
+    const prisma = {
+      sprint: { findFirst, create: jest.fn().mockResolvedValue({ id: 'new' }), update: jest.fn() },
+    };
+    const service = new SprintsService(
+      prisma as unknown as ConstructorParameters<typeof SprintsService>[0],
+    );
+    jest
+      .spyOn(service, 'getById')
+      .mockResolvedValue({} as Awaited<ReturnType<typeof service.getById>>);
+    return { service, prisma };
+  }
+
+  it('refuse un sprint qui commence avant aujourd’hui', async () => {
+    const { service, prisma } = serviceWith(jest.fn());
+    await expect(
+      service.create('p', { name: 'S', startDate: inDays(-1), endDate: inDays(10) }),
+    ).rejects.toMatchObject({ response: { code: 'SPRINT_START_IN_PAST' } });
+    expect(prisma.sprint.create).not.toHaveBeenCalled();
+  });
+
+  it('accepte un sprint qui commence aujourd’hui', async () => {
+    const { service, prisma } = serviceWith(jest.fn().mockResolvedValue(null));
+    await service.create('p', { name: 'S', startDate: today, endDate: inDays(13) });
+    expect(prisma.sprint.create).toHaveBeenCalled();
+  });
+
+  it('refuse des dates qui chevauchent un autre sprint, même clôturé, en le nommant', async () => {
+    const overlap = { name: 'Sprint 4', startDate: inDays(2), endDate: inDays(15) };
+    const findFirst = jest.fn().mockResolvedValue(overlap);
+    const { service } = serviceWith(findFirst);
+
+    await expect(
+      service.create('p', { name: 'S', startDate: inDays(10), endDate: inDays(20) }),
+    ).rejects.toMatchObject({
+      response: { code: 'SPRINT_DATES_OVERLAP', message: expect.stringContaining('Sprint 4') },
+    });
+    // Aucun filtre sur le statut : un sprint clôturé bloque aussi ses dates.
+    expect(findFirst.mock.calls[0][0].where.status).toBeUndefined();
+  });
+
+  it('modifie le nom d’un sprint actif commencé dans le passé sans contrôler ses dates', async () => {
+    const existing = {
+      id: 's',
+      status: SprintStatus.ACTIVE,
+      startDate: inDays(-5),
+      endDate: inDays(5),
+    };
+    const findFirst = jest.fn().mockResolvedValueOnce(existing);
+    const { service, prisma } = serviceWith(findFirst);
+
+    await service.update('p', 's', {
+      name: 'Nouveau nom',
+      startDate: inDays(-5),
+      endDate: inDays(5),
+    });
+
+    expect(findFirst).toHaveBeenCalledTimes(1);
+    expect(prisma.sprint.update).toHaveBeenCalled();
+  });
+
+  it('prolonge un sprint actif, mais refuse de déplacer son début dans le passé', async () => {
+    const existing = {
+      id: 's',
+      status: SprintStatus.ACTIVE,
+      startDate: inDays(-5),
+      endDate: inDays(5),
+    };
+    const extend = serviceWith(
+      jest.fn().mockResolvedValueOnce(existing).mockResolvedValueOnce(null),
+    );
+    await extend.service.update('p', 's', { endDate: inDays(9) });
+    expect(extend.prisma.sprint.update).toHaveBeenCalled();
+
+    const moveStart = serviceWith(jest.fn().mockResolvedValueOnce(existing));
+    await expect(
+      moveStart.service.update('p', 's', { startDate: inDays(-7) }),
+    ).rejects.toMatchObject({
+      response: { code: 'SPRINT_START_IN_PAST' },
+    });
   });
 });

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { WorkItemType } from '../enums';
+import { WorkItemStatus, WorkItemType } from '../enums';
 import {
   canBeChildOf,
   createWorkItemSchema,
+  deriveParentStatus,
   moveWorkItemSchema,
   REQUIRES_PARENT,
+  STATUS_ROLLUP_CHILD_TYPES,
   workItemFiltersSchema,
 } from './work-item';
 
@@ -14,10 +16,13 @@ describe('hiérarchie des tickets', () => {
     expect(canBeChildOf(WorkItemType.EPIC, WorkItemType.STORY)).toBe(false);
   });
 
-  it('rattache une sous-tâche à une story ou à un bug', () => {
-    expect(canBeChildOf(WorkItemType.SUBTASK, WorkItemType.STORY)).toBe(true);
-    expect(canBeChildOf(WorkItemType.SUBTASK, WorkItemType.BUG)).toBe(true);
-    expect(canBeChildOf(WorkItemType.SUBTASK, WorkItemType.EPIC)).toBe(false);
+  it('rattache une sous-tâche et un bug à une user story uniquement', () => {
+    for (const child of [WorkItemType.SUBTASK, WorkItemType.BUG]) {
+      expect(canBeChildOf(child, WorkItemType.STORY)).toBe(true);
+      expect(canBeChildOf(child, WorkItemType.EPIC)).toBe(false);
+      expect(canBeChildOf(child, WorkItemType.BUG)).toBe(false);
+      expect(canBeChildOf(child, WorkItemType.SUBTASK)).toBe(false);
+    }
   });
 
   it('interdit un epic enfant de quoi que ce soit', () => {
@@ -30,8 +35,8 @@ describe('hiérarchie des tickets', () => {
     expect(canBeChildOf(WorkItemType.SUBTASK, WorkItemType.SUBTASK)).toBe(false);
   });
 
-  it('n’exige un parent que pour les sous-tâches', () => {
-    expect(REQUIRES_PARENT).toEqual([WorkItemType.SUBTASK]);
+  it('exige une user story parente pour les sous-tâches et les bugs', () => {
+    expect(REQUIRES_PARENT).toEqual([WorkItemType.SUBTASK, WorkItemType.BUG]);
   });
 });
 
@@ -91,5 +96,46 @@ describe('moveWorkItemSchema', () => {
     const result = moveWorkItemSchema.safeParse({ parentId: null });
     expect(result.success).toBe(true);
     if (result.success) expect(result.data.parentId).toBeNull();
+  });
+});
+
+describe('deriveParentStatus — le statut d’un parent suit ses enfants', () => {
+  const { TODO, IN_PROGRESS, IN_TEST, READY_FOR_APPROVAL, DONE } = WorkItemStatus;
+
+  it('termine la Story quand toutes ses cartes sont terminées', () => {
+    expect(deriveParentStatus(IN_PROGRESS, [DONE, DONE])).toBe(DONE);
+    expect(deriveParentStatus(TODO, [DONE])).toBe(DONE);
+    expect(deriveParentStatus(IN_TEST, [DONE, DONE, DONE])).toBe(DONE);
+  });
+
+  it('rouvre une Story terminée dès qu’une carte quitte « Terminé »', () => {
+    expect(deriveParentStatus(DONE, [DONE, IN_TEST])).toBe(IN_PROGRESS);
+    // Ajout d'une nouvelle carte « À faire » à une Story terminée.
+    expect(deriveParentStatus(DONE, [DONE, TODO])).toBe(IN_PROGRESS);
+  });
+
+  it('démarre une Story « À faire » dès qu’une carte est engagée', () => {
+    expect(deriveParentStatus(TODO, [TODO, IN_PROGRESS])).toBe(IN_PROGRESS);
+    expect(deriveParentStatus(TODO, [READY_FOR_APPROVAL])).toBe(IN_PROGRESS);
+  });
+
+  it('ne touche à rien sinon — la Story garde son statut posé à la main', () => {
+    expect(deriveParentStatus(TODO, [TODO, TODO])).toBeNull();
+    expect(deriveParentStatus(IN_TEST, [IN_PROGRESS, DONE])).toBeNull();
+    expect(deriveParentStatus(READY_FOR_APPROVAL, [TODO])).toBeNull();
+    expect(deriveParentStatus(IN_PROGRESS, [])).toBeNull();
+    expect(deriveParentStatus(DONE, [])).toBeNull();
+  });
+});
+
+describe('STATUS_ROLLUP_CHILD_TYPES', () => {
+  it('fait suivre ses cartes à une User Story et ses User Stories à un Epic', () => {
+    expect(STATUS_ROLLUP_CHILD_TYPES[WorkItemType.STORY]).toEqual([
+      WorkItemType.SUBTASK,
+      WorkItemType.BUG,
+    ]);
+    expect(STATUS_ROLLUP_CHILD_TYPES[WorkItemType.EPIC]).toEqual([WorkItemType.STORY]);
+    expect(STATUS_ROLLUP_CHILD_TYPES[WorkItemType.SUBTASK]).toBeUndefined();
+    expect(STATUS_ROLLUP_CHILD_TYPES[WorkItemType.BUG]).toBeUndefined();
   });
 });

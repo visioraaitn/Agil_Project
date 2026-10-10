@@ -137,7 +137,7 @@ export function PullRequestDetailView({
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {/* En-tête Azure DevOps */}
-      <header className="border-border-default bg-surface border-b p-4 shadow-sm">
+      <header className="border-border-default bg-surface border-b px-6 pt-5 pb-4">
         <div className="flex flex-col gap-3">
           {onBack && (
             <button
@@ -153,10 +153,10 @@ export function PullRequestDetailView({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="bg-surface-sunken border-border-subtle text-ink-700 rounded border px-2 py-0.5 font-mono text-xs font-bold">
+                <span className="bg-surface-sunken text-ink-600 rounded-md px-2 py-0.5 font-mono text-xs font-semibold">
                   PR #{pullRequest.number}
                 </span>
-                <h1 className="text-ink-900 text-xl font-bold tracking-tight">
+                <h1 className="text-ink-900 text-2xl font-bold tracking-tight">
                   {pullRequest.title}
                 </h1>
                 <PrStatusBadge status={pullRequest.status} />
@@ -165,24 +165,22 @@ export function PullRequestDetailView({
               {/* Flux de branches */}
               <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs">
                 <span className="text-ink-500">Dépôt :</span>
-                <span className="font-semibold text-ink-800 dark:text-ink-200">
-                  {pullRequest.repository.name}
-                </span>
+                <span className="font-semibold text-ink-700">{pullRequest.repository.name}</span>
 
                 <span className="text-ink-400">·</span>
 
-                <div className="bg-surface-muted border-border-subtle flex items-center gap-1.5 rounded border px-2 py-0.5">
+                <div className="bg-surface-muted border-border-subtle flex items-center gap-1.5 rounded-md border px-2 py-0.5">
                   <GitBranch className="text-accent-600 size-3.5" />
-                  <span className="font-mono font-semibold text-ink-900 dark:text-ink-100">
+                  <span className="font-mono font-semibold text-ink-900">
                     {pullRequest.sourceBranch.name}
                   </span>
                 </div>
 
                 <ArrowRight className="text-ink-400 size-3.5" />
 
-                <div className="bg-surface-muted border-border-subtle flex items-center gap-1.5 rounded border px-2 py-0.5">
+                <div className="bg-surface-muted border-border-subtle flex items-center gap-1.5 rounded-md border px-2 py-0.5">
                   <GitBranch className="text-ink-600 size-3.5" />
-                  <span className="font-mono font-semibold text-ink-900 dark:text-ink-100">
+                  <span className="font-mono font-semibold text-ink-900">
                     {pullRequest.targetBranch?.name ?? pullRequest.targetBranchName ?? 'main'}
                   </span>
                   {pullRequest.targetBranch?.isProtected && (
@@ -289,7 +287,7 @@ export function PullRequestDetailView({
               pullRequest.status === PullRequestStatus.OPEN) && (
               <div className="bg-accent-50 dark:bg-accent-950/40 border-accent-200 dark:border-accent-800 flex items-center gap-2 rounded border px-3 py-1.5 text-xs">
                 <Shield className="text-accent-700 size-4 shrink-0" />
-                <span className="text-ink-700 dark:text-ink-300">
+                <span className="text-ink-700 ">
                   Politique de branche protégée : en tant qu'auteur, vous ne pouvez pas approuver
                   votre propre Pull Request. Un autre réviseur ou PO doit valider vos modifications.
                 </span>
@@ -302,14 +300,12 @@ export function PullRequestDetailView({
           <div className="border-border-subtle flex flex-wrap items-center gap-4 border-t pt-2 text-xs text-ink-500">
             <div className="flex items-center gap-1.5">
               <span className="font-semibold">Auteur :</span>
-              <span className="text-ink-800 dark:text-ink-200 font-medium">
-                {pullRequest.declaredBy.name}
-              </span>
+              <span className="text-ink-700 font-medium">{pullRequest.declaredBy.name}</span>
             </div>
 
             <div className="flex items-center gap-1.5">
               <span className="font-semibold">Ticket associé :</span>
-              <span className="bg-surface-sunken rounded px-1.5 py-0.5 font-semibold text-ink-900 dark:text-ink-100">
+              <span className="bg-surface-sunken rounded px-1.5 py-0.5 font-semibold text-ink-900">
                 {pullRequest.workItem.key} · {pullRequest.workItem.title}
               </span>
             </div>
@@ -343,7 +339,7 @@ export function PullRequestDetailView({
       </header>
 
       {/* Navigation des Onglets */}
-      <nav className="border-border-subtle bg-surface-muted flex gap-2 border-b px-4">
+      <nav className="border-border-default bg-surface flex gap-4 border-b px-6">
         <button
           type="button"
           onClick={() => setActiveTab('overview')}
@@ -394,19 +390,19 @@ export function PullRequestDetailView({
       </nav>
 
       {/* Contenu de l'onglet actif */}
-      <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto p-4">
+      <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto p-6">
         {activeTab === 'overview' && (
           <div className="mx-auto flex max-w-4xl flex-col gap-6">
             {/* Bannière Rejet ou Demande de modifs si présente */}
             {pullRequest.status === PullRequestStatus.CHANGES_REQUESTED && (
-              <div className="bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 rounded-lg border p-4 shadow-sm">
+              <div className="bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 rounded-xl border p-4">
                 <div className="flex items-start gap-3">
                   <AlertCircle className="mt-0.5 size-5 text-amber-600 shrink-0" />
                   <div className="flex-1">
                     <h3 className="text-amber-900 dark:text-amber-200 text-sm font-bold">
                       Modifications requises par le réviseur ({pullRequest.reviewedBy?.name})
                     </h3>
-                    <p className="text-ink-800 dark:text-ink-200 mt-1 whitespace-pre-wrap text-sm">
+                    <p className="text-ink-700 mt-1 whitespace-pre-wrap text-sm">
                       {pullRequest.reviewComment ?? 'Veuillez réviser le code avant réapprobation.'}
                     </p>
                   </div>
@@ -415,14 +411,14 @@ export function PullRequestDetailView({
             )}
 
             {pullRequest.status === PullRequestStatus.REJECTED && (
-              <div className="bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-700 rounded-lg border p-4 shadow-sm">
+              <div className="bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-700 rounded-xl border p-4">
                 <div className="flex items-start gap-3">
                   <XCircle className="mt-0.5 size-5 text-danger shrink-0" />
                   <div className="flex-1">
                     <h3 className="text-danger text-sm font-bold">
                       Pull Request Rejetée définitivement par {pullRequest.reviewedBy?.name}
                     </h3>
-                    <p className="text-ink-800 dark:text-ink-200 mt-1 whitespace-pre-wrap text-sm">
+                    <p className="text-ink-700 mt-1 whitespace-pre-wrap text-sm">
                       {pullRequest.rejectionReason ?? 'Cette proposition a été rejetée.'}
                     </p>
                   </div>
@@ -431,7 +427,7 @@ export function PullRequestDetailView({
             )}
 
             {/* Description Markdown de la PR */}
-            <section className="border-border-default bg-surface rounded-lg border p-5 shadow-sm">
+            <section className="card p-5">
               <h2 className="text-ink-900 mb-3 text-base font-bold">
                 Description de la Pull Request
               </h2>
@@ -445,7 +441,7 @@ export function PullRequestDetailView({
             </section>
 
             {/* Résumé du Ticket lié */}
-            <section className="border-border-default bg-surface rounded-lg border p-5 shadow-sm">
+            <section className="card p-5">
               <h2 className="text-ink-900 mb-2 text-base font-bold">Contexte Ticket</h2>
               <div className="bg-surface-muted border-border-subtle rounded border p-3">
                 <div className="flex items-center gap-2">
@@ -472,10 +468,7 @@ export function PullRequestDetailView({
             ) : (
               <div className="flex flex-col gap-3">
                 {pullRequest.comments.map((comment) => (
-                  <div
-                    key={comment.id}
-                    className="border-border-default bg-surface rounded-lg border p-4 shadow-sm"
-                  >
+                  <div key={comment.id} className="card p-4">
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <div className="bg-accent-600 flex size-6 items-center justify-center rounded-full text-xs font-bold text-white">
@@ -489,7 +482,7 @@ export function PullRequestDetailView({
                         </span>
                       </div>
                     </div>
-                    <div className="text-ink-800 dark:text-ink-200 text-sm">
+                    <div className="text-ink-700 text-sm">
                       <MarkdownViewer content={comment.body} />
                     </div>
                   </div>
@@ -498,7 +491,7 @@ export function PullRequestDetailView({
             )}
 
             {/* Formulaire d'ajout de commentaire */}
-            <div className="border-border-default bg-surface mt-2 rounded-lg border p-4 shadow-sm">
+            <div className="border-border-default bg-surface mt-2 rounded-xl border p-4">
               <h3 className="text-ink-900 mb-2 text-sm font-semibold">Ajouter un commentaire</h3>
               <MarkdownEditor
                 value={commentDraft}
@@ -530,7 +523,7 @@ export function PullRequestDetailView({
                   <div className="absolute -left-[31px] top-0.5 size-4 rounded-full bg-surface border-2 border-accent-600" />
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2 text-xs">
-                      <span className="font-semibold text-ink-900 dark:text-ink-100">
+                      <span className="font-semibold text-ink-900">
                         {event.actor?.name ?? 'Système'}
                       </span>
                       <span className="text-ink-400">·</span>
@@ -545,7 +538,7 @@ export function PullRequestDetailView({
                     </div>
 
                     {event.comment && (
-                      <div className="bg-surface-muted border-border-subtle mt-1 rounded border p-2.5 text-xs text-ink-700 dark:text-ink-300 whitespace-pre-wrap">
+                      <div className="bg-surface-muted border-border-subtle mt-1 rounded border p-2.5 text-xs text-ink-700  whitespace-pre-wrap">
                         {event.comment}
                       </div>
                     )}
@@ -575,24 +568,70 @@ export function PullRequestDetailView({
   );
 }
 
-export function PrStatusBadge({ status }: { status: PullRequestStatus }) {
-  const tone = {
-    [PullRequestStatus.OPEN]: 'bg-surface-sunken text-ink-700 border-border-default',
-    [PullRequestStatus.READY_FOR_APPROVAL]:
-      'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800',
-    [PullRequestStatus.APPROVED]:
-      'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800',
-    [PullRequestStatus.CHANGES_REQUESTED]:
-      'bg-red-100 text-red-900 border-red-300 dark:bg-red-950 dark:text-red-200 dark:border-red-800',
-    [PullRequestStatus.REJECTED]: 'bg-red-900 text-white border-red-950',
-    [PullRequestStatus.MERGED]:
-      'bg-accent-100 text-accent-900 border-accent-300 dark:bg-accent-950 dark:text-accent-200 dark:border-accent-800',
-    [PullRequestStatus.CLOSED]: 'bg-surface-sunken text-ink-400 border-border-subtle',
-  }[status];
+/** Teintes des statuts de PR : pastille et tuile d'icône des listes. */
+const PR_STATUS_STYLE: Record<PullRequestStatus, { badge: string; dot: string; tile: string }> = {
+  [PullRequestStatus.OPEN]: {
+    badge: 'bg-surface-sunken text-ink-700',
+    dot: 'bg-ink-400',
+    tile: 'bg-surface-sunken text-ink-600',
+  },
+  [PullRequestStatus.READY_FOR_APPROVAL]: {
+    badge: 'bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300',
+    dot: 'bg-amber-500',
+    tile: 'bg-amber-50 text-amber-600 dark:bg-amber-950/50',
+  },
+  [PullRequestStatus.APPROVED]: {
+    badge: 'bg-green-50 text-success dark:bg-green-950/50',
+    dot: 'bg-success',
+    tile: 'bg-green-50 text-success dark:bg-green-950/50',
+  },
+  [PullRequestStatus.CHANGES_REQUESTED]: {
+    badge: 'bg-red-50 text-danger dark:bg-red-950/50',
+    dot: 'bg-danger',
+    tile: 'bg-red-50 text-danger dark:bg-red-950/50',
+  },
+  [PullRequestStatus.REJECTED]: {
+    badge: 'bg-danger text-white',
+    dot: 'bg-white',
+    tile: 'bg-red-100 text-danger dark:bg-red-950/60',
+  },
+  [PullRequestStatus.MERGED]: {
+    badge: 'bg-purple-50 text-purple dark:bg-purple-950/50 dark:text-purple-300',
+    dot: 'bg-purple',
+    tile: 'bg-purple-50 text-purple dark:bg-purple-950/50 dark:text-purple-300',
+  },
+  [PullRequestStatus.CLOSED]: {
+    badge: 'bg-surface-sunken text-ink-500',
+    dot: 'bg-ink-400',
+    tile: 'bg-surface-sunken text-ink-400',
+  },
+};
 
+export function PrStatusBadge({ status }: { status: PullRequestStatus }) {
+  const style = PR_STATUS_STYLE[status];
   return (
-    <span className={cn('w-fit rounded border px-2 py-0.5 text-xs font-bold', tone)}>
+    <span
+      className={cn(
+        'inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap',
+        style.badge,
+      )}
+    >
+      <span className={cn('size-1.5 shrink-0 rounded-full', style.dot)} />
       {LABELS_FR.pullRequestStatus[status] ?? status}
+    </span>
+  );
+}
+
+/** Tuile carrée teintée selon le statut, en tête de chaque ligne de PR. */
+export function PrStatusIcon({ status }: { status: PullRequestStatus }) {
+  return (
+    <span
+      className={cn(
+        'flex size-9 shrink-0 items-center justify-center rounded-lg',
+        PR_STATUS_STYLE[status].tile,
+      )}
+    >
+      <GitPullRequest className="size-4" strokeWidth={1.75} />
     </span>
   );
 }

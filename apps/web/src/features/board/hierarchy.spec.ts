@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { Priority, WorkItemStatus, WorkItemType, type BacklogNode } from '@visiora/shared';
 import {
-  buildHierarchyLanes,
-  collapsibleRowIds,
-  epicRowId,
-  flattenVisibleRows,
-  storyRowId,
+  boardRowItems,
+  buildBoardRows,
+  childTypesOf,
+  rootEpicIds,
+  workItemRowId,
 } from './hierarchy';
 
 const REPORTER = { id: 'u1', name: 'Reporter', email: 'r@x.com', avatarUrl: null };
+const SPRINT = 'sprint-1';
 
-function node(overrides: Partial<BacklogNode> & Pick<BacklogNode, 'id' | 'key' | 'type'>): BacklogNode {
+function node(
+  overrides: Partial<BacklogNode> & Pick<BacklogNode, 'id' | 'key' | 'type'>,
+): BacklogNode {
   return {
     number: 1,
     projectId: 'project-1',
@@ -22,7 +25,8 @@ function node(overrides: Partial<BacklogNode> & Pick<BacklogNode, 'id' | 'key' |
     isBlocked: false,
     blockedReason: null,
     parentId: null,
-    sprintId: null,
+    sprintId: SPRINT,
+    boardColumnId: null,
     startDate: null,
     dueDate: null,
     assignee: null,
@@ -40,133 +44,132 @@ function node(overrides: Partial<BacklogNode> & Pick<BacklogNode, 'id' | 'key' |
   };
 }
 
-describe('buildHierarchyLanes', () => {
-  it('construit les couloirs Epic > Story avec les items imbriqués, y compris les tickets sans Epic', () => {
-    const t1 = node({ id: 't1', key: 'VIS-1-1-T1', type: WorkItemType.SUBTASK, parentId: 's1' });
-    const s1 = node({
-      id: 's1',
-      key: 'VIS-1-1',
-      type: WorkItemType.STORY,
-      parentId: 'e1',
-      children: [t1],
+// Epic e1 > Story s1 (sous-tâche t1, bug bg) + Story s2 sans carte.
+// Story s3 hors Epic. Story s9 planifiée dans un autre sprint.
+const t1 = node({ id: 't1', key: 'VIS-1-1-T1', type: WorkItemType.SUBTASK, parentId: 's1' });
+const bg = node({
+  id: 'bg',
+  key: 'VIS-1-1-B1',
+  type: WorkItemType.BUG,
+  parentId: 's1',
+  status: WorkItemStatus.IN_TEST,
+});
+const s1 = node({
+  id: 's1',
+  key: 'VIS-1-1',
+  type: WorkItemType.STORY,
+  parentId: 'e1',
+  children: [t1, bg],
+});
+const s2 = node({ id: 's2', key: 'VIS-1-2', type: WorkItemType.STORY, parentId: 'e1' });
+const e1 = node({ id: 'e1', key: 'VIS-1', type: WorkItemType.EPIC, children: [s1, s2] });
+const s3 = node({ id: 's3', key: 'VIS-US-3', type: WorkItemType.STORY });
+const s9 = node({ id: 's9', key: 'VIS-US-9', type: WorkItemType.STORY, sprintId: 'other' });
+const tree = [e1, s3, s9];
+const cards = [t1, bg];
+
+const rowIds = (rows: { kind: string; rowId: string }[]) => rows.map((row) => row.rowId);
+
+describe('lignes du Task Board', () => {
+  it('ne met dans la colonne Work Items que des Epics et des User Stories — une ligne chacun', () => {
+    const { rows } = buildBoardRows(tree, cards, { sprintId: SPRINT });
+    expect(rows.map((row) => (row.kind === 'work-item' ? row.item.id : row.kind))).toEqual([
+      'e1',
+      's1',
+      's2',
+      's3',
+    ]);
+  });
+
+  it('pose sous-tâches et bugs de la User Story dans ses colonnes', () => {
+    const { rows } = buildBoardRows(tree, cards, { sprintId: SPRINT });
+    const cardsOf = (id: string) =>
+      rows.find((row) => row.kind === 'work-item' && row.item.id === id)?.cards.map((c) => c.id);
+    expect(cardsOf('s1')).toEqual(['t1', 'bg']);
+    expect(cardsOf('e1')).toEqual([]);
+    expect(cardsOf('s2')).toEqual([]);
+  });
+
+  it('ajoute la ligne d’une Story planifiée ailleurs quand ses cartes sont dans le sprint', () => {
+    const t9 = node({ id: 't9', key: 'VIS-US-9-T1', type: WorkItemType.SUBTASK, parentId: 's9' });
+    const withS9 = [e1, s3, { ...s9, children: [t9] }];
+    expect(boardRowItems(withS9, [t9], SPRINT).map((item) => item.id)).toContain('s9');
+  });
+
+  it('avec des filtres actifs, ne garde que les lignes portant des cartes visibles', () => {
+    const { rows } = buildBoardRows(tree, [bg], { sprintId: SPRINT, onlyWithCards: true });
+    expect(rowIds(rows)).toEqual([workItemRowId('s1')]);
+  });
+
+  it('imbrique les Stories sous leur Epic en vue hiérarchique et permet de les replier', () => {
+    const nested = buildBoardRows(tree, cards, { sprintId: SPRINT, nested: true });
+    expect(nested.rows.map((row) => [row.rowId, row.depth])).toEqual([
+      [workItemRowId('e1'), 0],
+      [workItemRowId('s1'), 1],
+      [workItemRowId('s2'), 1],
+      [workItemRowId('s3'), 0],
+    ]);
+    expect(nested.collapsibleIds).toEqual([workItemRowId('e1')]);
+
+    const folded = buildBoardRows(tree, cards, {
+      sprintId: SPRINT,
+      nested: true,
+      collapsed: new Set([workItemRowId('e1')]),
     });
-    const s2 = node({ id: 's2', key: 'VIS-1-2', type: WorkItemType.STORY, parentId: 'e1' });
-    const e1 = node({ id: 'e1', key: 'VIS-1', type: WorkItemType.EPIC, children: [s1, s2] });
-    const s3 = node({ id: 's3', key: 'VIS-US-1', type: WorkItemType.STORY });
-
-    const tree = [e1, s3];
-    const items = [s1, t1, s2, s3];
-
-    const result = buildHierarchyLanes(tree, items);
-
-    expect(result.unlinked).toHaveLength(0);
-    const epicLane = result.epics.find((lane) => lane.id === 'e1');
-    expect(epicLane?.stories.map((story) => story.id).sort()).toEqual(['s1', 's2']);
-    expect(epicLane?.stories.find((story) => story.id === 's1')?.items.map((i) => i.id).sort()).toEqual(
-      ['s1', 't1'],
-    );
-
-    const noEpicLane = result.epics.find((lane) => lane.isNoEpic);
-    expect(noEpicLane?.stories.map((story) => story.id)).toEqual(['s3']);
+    expect(rowIds(folded.rows)).toEqual([workItemRowId('e1'), workItemRowId('s3')]);
   });
 
-  it("garde une Sous-tâche rattachée à sa Story même si la Story n'est pas dans le jeu filtré", () => {
-    const t1 = node({ id: 't1', key: 'VIS-1-1-T1', type: WorkItemType.SUBTASK, parentId: 's1' });
-    const s1 = node({
-      id: 's1',
-      key: 'VIS-1-1',
-      type: WorkItemType.STORY,
-      parentId: 'e1',
-      children: [t1],
+  it("en vue hiérarchique, donne une ligne à l'Epic d'une Story du sprint même s'il n'est pas planifié", () => {
+    const sprintTree = [{ ...e1, sprintId: null }, s3];
+    const flatView = buildBoardRows(sprintTree, cards, { sprintId: SPRINT, onlyWithCards: true });
+    const nestedView = buildBoardRows(sprintTree, cards, {
+      sprintId: SPRINT,
+      onlyWithCards: true,
+      nested: true,
     });
-    const e1 = node({ id: 'e1', key: 'VIS-1', type: WorkItemType.EPIC, children: [s1] });
-
-    // Filtre "type = Sous-tâche" côté board : seule la Sous-tâche apparaît dans `items`.
-    const result = buildHierarchyLanes([e1], [t1]);
-
-    const epicLane = result.epics.find((lane) => lane.id === 'e1');
-    const storyLane = epicLane?.stories.find((story) => story.id === 's1');
-    expect(storyLane?.items.map((i) => i.id)).toEqual(['t1']);
-    expect(result.unlinked).toHaveLength(0);
+    expect(rowIds(flatView.rows)).toEqual([workItemRowId('s1')]);
+    expect(nestedView.rows.map((row) => [row.rowId, row.depth])).toEqual([
+      [workItemRowId('e1'), 0],
+      [workItemRowId('s1'), 1],
+    ]);
   });
 
-  it('expose le type réel de la Story/Bug du couloir', () => {
-    const b1 = node({ id: 'b1', key: 'VIS-1-B1', type: WorkItemType.BUG, parentId: 'e1' });
-    const e1 = node({ id: 'e1', key: 'VIS-1', type: WorkItemType.EPIC, children: [b1] });
-
-    const result = buildHierarchyLanes([e1], [b1]);
-
-    expect(result.epics[0]?.stories[0]?.type).toBe(WorkItemType.BUG);
+  it('restreint les lignes à un couloir et préfixe leurs identifiants', () => {
+    const { rows } = buildBoardRows(tree, cards, {
+      sprintId: SPRINT,
+      include: (item) => item.id === 's3',
+      scope: 'lane|',
+      withUnlinked: false,
+    });
+    expect(rowIds(rows)).toEqual(['lane|row:s3']);
   });
 
-  it("classe un ticket introuvable dans l'arbre en non-lié plutôt que de le masquer", () => {
-    const ghost = node({ id: 'ghost', key: 'VIS-9', type: WorkItemType.STORY });
-
-    const result = buildHierarchyLanes([], [ghost]);
-
-    expect(result.epics).toHaveLength(0);
-    expect(result.unlinked.map((i) => i.id)).toEqual(['ghost']);
+  it('garde une carte sans User Story (ancien bug racine) plutôt que de la masquer', () => {
+    const legacyBug = node({ id: 'b0', key: 'VIS-B1', type: WorkItemType.BUG });
+    const { rows } = buildBoardRows([], [legacyBug], { sprintId: SPRINT });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.kind).toBe('unlinked');
+    expect(rows[0]?.cards.map((card) => card.id)).toEqual(['b0']);
   });
 });
 
-describe('flattenVisibleRows', () => {
-  // Epic e1 > Story s1 (Sous-tâches t1 À faire, t2 En test) + Story s2 sans enfant.
-  const t1 = node({ id: 't1', key: 'VIS-1-1-T1', type: WorkItemType.SUBTASK, parentId: 's1' });
-  const t2 = node({
-    id: 't2',
-    key: 'VIS-1-1-T2',
-    type: WorkItemType.SUBTASK,
-    parentId: 's1',
-    status: WorkItemStatus.IN_TEST,
+describe('règles de création depuis le board', () => {
+  it('crée sous-tâches et bugs sous une User Story, et rien de tel sous un Epic', () => {
+    expect(childTypesOf(WorkItemType.STORY).sort()).toEqual(
+      [WorkItemType.BUG, WorkItemType.SUBTASK].sort(),
+    );
+    expect(childTypesOf(WorkItemType.EPIC)).toEqual([WorkItemType.STORY]);
+    expect(childTypesOf(WorkItemType.SUBTASK)).toEqual([]);
+    expect(childTypesOf(WorkItemType.BUG)).toEqual([]);
   });
-  const s1 = node({
-    id: 's1',
-    key: 'VIS-1-1',
-    type: WorkItemType.STORY,
-    parentId: 'e1',
-    status: WorkItemStatus.IN_PROGRESS,
-    children: [t1, t2],
-  });
-  const s2 = node({ id: 's2', key: 'VIS-1-2', type: WorkItemType.STORY, parentId: 'e1' });
-  const e1 = node({ id: 'e1', key: 'VIS-1', type: WorkItemType.EPIC, children: [s1, s2] });
-  const board = buildHierarchyLanes([e1], [s1, t1, t2, s2]);
+});
 
-  const visibleCardIds = (collapsed: Set<string>) =>
-    flattenVisibleRows(board, collapsed)
-      .flatMap((row) => (row.kind === 'epic' ? [] : row.cards))
-      .map((item) => item.id)
-      .sort();
-
-  it("ne rend repliables que l'Epic et les Stories ayant des enfants", () => {
-    expect(collapsibleRowIds(board)).toEqual([epicRowId('e1'), storyRowId('s1')]);
-  });
-
-  it('tout déplié : chaque carte garde son propre statut, sous la ligne de son parent', () => {
-    const rows = flattenVisibleRows(board, new Set());
-    expect(rows.map((row) => row.rowId)).toEqual([
-      epicRowId('e1'),
-      storyRowId('s1'),
-      storyRowId('s2'),
-    ]);
-    const storyRow = rows[1];
-    expect(storyRow?.kind === 'story' && storyRow.hasChildren).toBe(true);
-    const cards = storyRow?.kind === 'story' ? storyRow.cards : [];
-    expect(cards.find((item) => item.id === 't2')?.status).toBe(WorkItemStatus.IN_TEST);
-    expect(cards.find((item) => item.id === 's1')?.status).toBe(WorkItemStatus.IN_PROGRESS);
-  });
-
-  it('replier une Story masque ses Sous-tâches mais pas les autres Stories', () => {
-    expect(visibleCardIds(new Set([storyRowId('s1')]))).toEqual(['s1', 's2']);
-  });
-
-  it('replier un Epic masque toute sa descendance, même une Story dépliée', () => {
-    const rows = flattenVisibleRows(board, new Set([epicRowId('e1')]));
-    expect(rows.map((row) => row.rowId)).toEqual([epicRowId('e1')]);
-    expect(visibleCardIds(new Set([epicRowId('e1')]))).toEqual([]);
-  });
-
-  it('Tout replier puis Tout déplier restaure la hiérarchie complète', () => {
-    expect(visibleCardIds(new Set(collapsibleRowIds(board)))).toEqual([]);
-    expect(visibleCardIds(new Set())).toEqual(['s1', 's2', 't1', 't2']);
+describe('rootEpicIds', () => {
+  it("remonte chaque ticket à l'Epic racine par les vraies relations parent/enfant", () => {
+    const roots = rootEpicIds(tree);
+    expect(roots.get('bg')).toBe('e1');
+    expect(roots.get('s1')).toBe('e1');
+    expect(roots.get('e1')).toBe('e1');
+    expect(roots.has('s3')).toBe(false);
   });
 });
