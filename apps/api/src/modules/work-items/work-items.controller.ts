@@ -37,6 +37,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ProjectId } from '../../common/decorators/project-id.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { ProjectAccessService } from '../access/project-access.service';
 import type { UploadedFileLike } from '../storage/object-storage.service';
 import { WorkItemImportService } from './work-item-import.service';
 import { WorkItemsService } from './work-items.service';
@@ -48,6 +49,7 @@ export class WorkItemsController {
   constructor(
     private readonly workItems: WorkItemsService,
     private readonly workItemImport: WorkItemImportService,
+    private readonly access: ProjectAccessService,
   ) {}
 
   @Get('backlog')
@@ -60,7 +62,9 @@ export class WorkItemsController {
   }
 
   @Get('board')
-  @ApiOperation({ summary: 'Task Board : tickets répartis dans les colonnes configurées du projet' })
+  @ApiOperation({
+    summary: 'Task Board : tickets répartis dans les colonnes configurées du projet',
+  })
   getBoard(
     @ProjectId() projectId: string,
     @Query(new ZodValidationPipe(workItemFiltersSchema)) filters: WorkItemFilters,
@@ -78,7 +82,7 @@ export class WorkItemsController {
   }
 
   @Post('work-items/import')
-  @RequirePermission('workitem:create')
+  @RequirePermission('workitem:import')
   @UseInterceptors(
     FileInterceptor('file', { limits: { fileSize: MAX_IMPORT_SIZE_MB * 1024 * 1024, files: 1 } }),
   )
@@ -99,7 +103,10 @@ export class WorkItemsController {
     @UploadedFile() file: UploadedFileLike | undefined,
   ): Promise<WorkItemImportSummary> {
     if (!file) {
-      throw new BadRequestException({ code: 'IMPORT_FILE_REQUIRED', message: 'Aucun fichier reçu' });
+      throw new BadRequestException({
+        code: 'IMPORT_FILE_REQUIRED',
+        message: 'Aucun fichier reçu',
+      });
     }
     return this.workItemImport.importFromFile(projectId, file, user.id);
   }
@@ -115,14 +122,21 @@ export class WorkItemsController {
     return this.workItems.create(projectId, dto, user.id);
   }
 
+  /**
+   * Changer le sprint d'un ticket modifie la composition du sprint : c'est de la
+   * planification (`sprint:plan`), réservée aux administrateurs du projet. Le
+   * reste du ticket relève de `workitem:update`.
+   */
   @Patch('work-items/:itemId')
   @RequirePermission('workitem:update')
   @ApiOperation({ summary: 'Modification d’un ticket, de ses étiquettes et de ses critères' })
-  update(
+  async update(
     @ProjectId() projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('itemId', ParseUUIDPipe) itemId: string,
     @Body(new ZodValidationPipe(updateWorkItemSchema)) dto: UpdateWorkItemInput,
   ): Promise<WorkItemDetail> {
+    if (dto.sprintId !== undefined) await this.access.assertCan(user, projectId, 'sprint:plan');
     return this.workItems.update(projectId, itemId, dto);
   }
 
@@ -151,7 +165,11 @@ export class WorkItemsController {
     @Body(new ZodValidationPipe(moveWorkItemSchema)) dto: MoveWorkItemInput,
   ): Promise<WorkItemSummary> {
     // Le statut ne se change pas depuis le backlog : c'est le rôle du board.
-    return this.workItems.move(projectId, itemId, { ...dto, status: undefined, columnId: undefined });
+    return this.workItems.move(projectId, itemId, {
+      ...dto,
+      status: undefined,
+      columnId: undefined,
+    });
   }
 
   @Delete('work-items/:itemId')

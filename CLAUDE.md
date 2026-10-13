@@ -97,10 +97,33 @@ Lire en début de session : [`docs/01-architecture-et-plan.md`](docs/01-architec
   Owner (sans lui, plus personne ne peut approuver de PR).
 - **`GET /users` est réservé à `user:manage` (admin)**. Pour les sélecteurs de personnes
   (affecter un membre, assigner un ticket), utiliser **`GET /users/directory`** : ouvert à tout
-  utilisateur authentifié, il n'expose que `id`, `name`, `email`, `avatarUrl`. Sans lui, un
-  Product Owner — qui gère les membres mais n'est pas admin — ne pourrait désigner personne.
+  utilisateur authentifié, il n'expose que `id`, `name`, `email`, `avatarUrl`.
 - Le token porte un **`jti`** unique : deux JWT signés dans la même seconde seraient sinon
   identiques (`iat` est en secondes), donc indistinguables dans les journaux.
+
+### Contrôle d'accès à trois niveaux (`packages/shared/src/permissions.ts`)
+
+- **Super administrateur** = `GlobalRole.ADMIN` **et** `isSuperAdmin` (`isSuperAdministrator`).
+  Seul à voir tous les projets, à en créer (`project:create`) et à en gérer les membres
+  (`project:member:manage`, rôles compris).
+- **Administrateur** (`GlobalRole.ADMIN`) : `user:manage` hors projet, et administration complète
+  (`PROJECT_ADMIN_PERMISSIONS` : projet, documents, `workitem:import`, `sprint:manage|close|plan`)
+  **uniquement sur les projets dont il est membre**. Plus de contournement de l'appartenance.
+- **Membre** (`GlobalRole.MEMBER`) : les droits de son rôle projet, mais **jamais**
+  `PROJECT_ADMIN_PERMISSIONS`, même `PROJECT_LEAD`. CRUD complet des tickets (`workitem:delete` compris).
+- **`sprint:plan`** = changer le `sprintId` d'un ticket (« Affecter des Work Items ») : contrôlé
+  dans `WorkItemsController.update` via `ProjectAccessService.assertCan`. Créer un ticket
+  directement dans un sprint (« New Item ») reste `workitem:create`.
+- **Visibilité filtrée dans la requête** : `visibleProjectsWhere(user)` (liste, total, recherche
+  globale). Ne jamais charger puis filtrer.
+- **Accès refusé** : `ProjectPermissionGuard` → `hasProjectAccess()`. Une clé inconnue reçoit la même
+  403 `NOT_A_PROJECT_MEMBER` qu'un projet interdit (pas de sondage), sauf pour le super admin (404).
+- Ressources filles : toujours `findFirst({ where: { id, projectId } })` — y compris les voisins
+  de classement (`RankingService.rankOf`).
+- Côté front, droits hors projet via `useAuth()` (`canCreateProject`, `canManageUsers`), calculés
+  par le même `can()` ; droits projet via `useProjectPermissions`.
+- Audit dans `ActivityLog` : projet créé/supprimé, membre ajouté/retiré/rôle changé, sprint clôturé.
+- Tests de bout en bout API : `apps/web/tests/e2e/access-control.spec.ts` (matrice + IDOR).
 
 ## Règles des tickets (phase 2)
 

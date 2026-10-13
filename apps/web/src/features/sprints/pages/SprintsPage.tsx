@@ -149,7 +149,7 @@ export function SprintsPage() {
           <SprintDetailView
             sprint={selected}
             canClose={can('sprint:close')}
-            canAssign={can('workitem:update')}
+            canAssign={can('sprint:plan')}
             canCreate={can('workitem:create')}
             canStart={can('sprint:manage')}
             onEdit={() => setEditOpen(true)}

@@ -141,16 +141,10 @@ export class RepositoriesService {
     repositoryId: string,
     branchId: string,
     userId: string,
-    globalRole: string,
+    /** `repo:manage` résolu par la matrice : supprime toute branche, protégée comprise. */
+    canManageRepository: boolean,
   ): Promise<void> {
     await this.assertRepository(projectId, repositoryId);
-
-    const member = await this.prisma.projectMember.findUnique({
-      where: { projectId_userId: { projectId, userId } },
-      select: { role: true },
-    });
-
-    const isLeadOrAdmin = globalRole === 'ADMIN' || member?.role === 'PROJECT_LEAD';
 
     const branch = await this.prisma.branch.findFirst({
       where: { id: branchId, repositoryId },
@@ -179,7 +173,7 @@ export class RepositoriesService {
     }
 
     // Règle 2 : une branche protégée exige un Project Lead ou un Admin.
-    if (branch.isProtected && !isLeadOrAdmin) {
+    if (branch.isProtected && !canManageRepository) {
       throw new ForbiddenException({
         code: 'CANNOT_DELETE_PROTECTED_BRANCH',
         message: 'Seul un administrateur ou Project Lead peut supprimer une branche protégée',
@@ -187,7 +181,7 @@ export class RepositoriesService {
     }
 
     // Règle 3 : un membre ne peut supprimer que ses propres branches.
-    if (!isLeadOrAdmin && branch.createdById && branch.createdById !== userId) {
+    if (!canManageRepository && branch.createdById && branch.createdById !== userId) {
       throw new ForbiddenException({
         code: 'FORBIDDEN_BRANCH_DELETION',
         message: 'Vous ne pouvez supprimer que vos propres branches',

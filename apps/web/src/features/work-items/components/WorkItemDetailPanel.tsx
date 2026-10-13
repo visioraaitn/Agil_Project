@@ -351,7 +351,7 @@ function DetailBody({
             <Select
               id="wi-sprint"
               value={draft.sprintId}
-              disabled={!canEdit}
+              disabled={!canEdit || !can('sprint:plan')}
               onChange={(event) => setDraft({ ...draft, sprintId: event.target.value })}
             >
               <option value="">Backlog (aucun sprint)</option>

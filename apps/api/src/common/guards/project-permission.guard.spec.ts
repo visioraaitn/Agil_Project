@@ -1,4 +1,9 @@
-import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AuthenticatedUser, GlobalRole, Permission, ProjectRole } from '@visiora/shared';
 import { ProjectAccessService } from '../../modules/access/project-access.service';
@@ -18,10 +23,12 @@ const USER: AuthenticatedUser = {
 };
 
 const ADMIN: AuthenticatedUser = { ...USER, id: 'admin-1', globalRole: GlobalRole.ADMIN };
+const SUPER_ADMIN: AuthenticatedUser = { ...ADMIN, id: 'super-1', isSuperAdmin: true };
 
 /**
  * Prisma simulé : `role` est le rôle renvoyé pour l'appartenance au projet,
- * `null` signifiant que l'utilisateur n'est pas membre.
+ * `null` signifiant que l'utilisateur n'est pas membre. La clé `UNKNOWN`
+ * n'existe pas.
  */
 function fakePrisma(role: ProjectRole | null) {
   return {
@@ -29,7 +36,9 @@ function fakePrisma(role: ProjectRole | null) {
       findUnique: jest.fn().mockResolvedValue(role ? { role } : null),
     },
     project: {
-      findUnique: jest.fn().mockResolvedValue({ id: PROJECT_ID }),
+      findUnique: jest.fn(({ where }: { where: { key: string } }) =>
+        Promise.resolve(where.key === 'UNKNOWN' ? null : { id: PROJECT_ID }),
+      ),
     },
   } as unknown as PrismaService;
 }
@@ -127,19 +136,78 @@ describe('ProjectPermissionGuard', () => {
     });
   });
 
-  describe('administrateur plateforme', () => {
-    it('accède à un projet dont il n’est pas membre', async () => {
-      await expect(run(null, undefined, ADMIN)).resolves.toBe(true);
+  describe('administrateur', () => {
+    it('est refusé sur un projet dont il n’est pas membre', async () => {
+      const result = await run(null, undefined, ADMIN);
+      expect(result).toBeInstanceOf(ForbiddenException);
+      expect((result as ForbiddenException).getResponse()).toMatchObject({
+        code: 'NOT_A_PROJECT_MEMBER',
+      });
     });
 
-    it('détient les permissions projet sans être membre', async () => {
-      await expect(run(null, 'pr:approve', ADMIN)).resolves.toBe(true);
+    it('n’a aucune permission projet hors de ses projets', async () => {
+      for (const permission of ['project:update', 'sprint:manage', 'workitem:import'] as const) {
+        expect(await run(null, permission, ADMIN)).toBeInstanceOf(ForbiddenException);
+      }
+    });
+
+    it('administre un projet dont il est membre, sans en gérer les membres', async () => {
+      for (const permission of ['project:update', 'project:delete', 'sprint:close'] as const) {
+        await expect(run(ProjectRole.MEMBER, permission, ADMIN)).resolves.toBe(true);
+      }
+      expect(await run(ProjectRole.MEMBER, 'project:member:manage', ADMIN)).toBeInstanceOf(
+        ForbiddenException,
+      );
+    });
+
+    it('ne crée pas de projet', async () => {
+      expect(await run(null, 'project:create', ADMIN, {})).toBeInstanceOf(ForbiddenException);
     });
 
     it('réserve la gestion des comptes aux administrateurs plateforme', async () => {
       await expect(run(null, 'user:manage', ADMIN, {})).resolves.toBe(true);
       const denied = await run(null, 'user:manage', USER, {});
       expect(denied).toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  describe('super administrateur', () => {
+    it('accède à un projet dont il n’est pas membre et en gère les membres', async () => {
+      await expect(run(null, undefined, SUPER_ADMIN)).resolves.toBe(true);
+      await expect(run(null, 'project:member:manage', SUPER_ADMIN)).resolves.toBe(true);
+    });
+
+    it('crée un projet', async () => {
+      await expect(run(null, 'project:create', SUPER_ADMIN, {})).resolves.toBe(true);
+    });
+  });
+
+  describe('membre', () => {
+    it('ne gère ni le projet, ni les sprints, ni l’import, même Project Lead', async () => {
+      for (const role of Object.values(ProjectRole)) {
+        for (const permission of [
+          'project:update',
+          'project:delete',
+          'project:member:manage',
+          'sprint:manage',
+          'sprint:close',
+          'sprint:plan',
+          'workitem:import',
+        ] as const) {
+          expect(await run(role, permission)).toBeInstanceOf(ForbiddenException);
+        }
+      }
+    });
+
+    it('crée, modifie, déplace et supprime les tickets', async () => {
+      for (const permission of [
+        'workitem:create',
+        'workitem:update',
+        'workitem:move',
+        'workitem:delete',
+      ] as const) {
+        await expect(run(ProjectRole.MEMBER, permission)).resolves.toBe(true);
+      }
     });
   });
 
@@ -165,6 +233,20 @@ describe('ProjectPermissionGuard', () => {
         select: { id: true },
       });
       expect(request.resolvedProjectId).toBe(PROJECT_ID);
+    });
+
+    it('répond à une clé inconnue comme à un projet inaccessible (pas de sondage)', async () => {
+      const unknown = await run(null, undefined, ADMIN, { projectId: 'unknown' });
+      const forbidden = await run(null, undefined, ADMIN, { projectId: 'vis' });
+      expect(unknown).toBeInstanceOf(ForbiddenException);
+      expect((unknown as ForbiddenException).getResponse()).toEqual(
+        (forbidden as ForbiddenException).getResponse(),
+      );
+    });
+
+    it('signale une clé inconnue au super administrateur', async () => {
+      const result = await run(null, undefined, SUPER_ADMIN, { projectId: 'unknown' });
+      expect(result).toBeInstanceOf(NotFoundException);
     });
 
     it("n'interroge pas la table projet quand l'UUID est fourni", async () => {

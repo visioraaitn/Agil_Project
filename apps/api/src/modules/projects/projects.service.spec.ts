@@ -92,6 +92,7 @@ describe('ProjectsService.addMember', () => {
         create: jest.fn().mockResolvedValue({ id: 'notif-1' }),
         update: jest.fn().mockResolvedValue({ id: 'notif-1' }),
       },
+      activityLog: { create: jest.fn().mockResolvedValue({}) },
     };
 
     const access = {};
@@ -107,7 +108,11 @@ describe('ProjectsService.addMember', () => {
       storage as unknown as ConstructorParameters<typeof ProjectsService>[3],
     );
 
-    await service.addMember('project-1', { userId: 'user-2', role: 'MEMBER', capacity: null });
+    await service.addMember(
+      'project-1',
+      { userId: 'user-2', role: 'MEMBER', capacity: null },
+      'super-1',
+    );
 
     expect(prisma.notification.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -124,11 +129,19 @@ describe('ProjectsService.addMember', () => {
       expect.stringContaining('VisioraAI'),
       expect.any(String),
     );
+    expect(prisma.activityLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        projectId: 'project-1',
+        actorId: 'super-1',
+        action: 'member_added',
+      }),
+    });
   });
 });
 
 describe('ProjectsService.remove', () => {
   const project = {
+    key: 'VPL',
     name: 'Visiora Planner',
     documents: [{ storageKey: 'projects/p1/documents/a.pdf' }],
     workItems: [{ attachments: [{ storageKey: 'p1/w1/a.png' }] }],
@@ -140,6 +153,7 @@ describe('ProjectsService.remove', () => {
         findUnique: jest.fn().mockResolvedValue(project),
         delete: jest.fn().mockResolvedValue({ id: 'project-1' }),
       },
+      activityLog: { create: jest.fn().mockResolvedValue({}) },
     };
     const storage = { deleteObject: jest.fn().mockResolvedValue(undefined) };
     const service = new ProjectsService(
@@ -155,7 +169,7 @@ describe('ProjectsService.remove', () => {
     const { prisma, service } = setup();
 
     await expect(
-      service.remove('project-1', { confirmationName: 'Autre projet' }),
+      service.remove('project-1', { confirmationName: 'Autre projet' }, 'admin-1'),
     ).rejects.toMatchObject({ response: { code: 'PROJECT_CONFIRMATION_MISMATCH' } });
     expect(prisma.project.delete).not.toHaveBeenCalled();
   });
@@ -163,9 +177,70 @@ describe('ProjectsService.remove', () => {
   it('supprime le projet puis nettoie ses objets de stockage', async () => {
     const { prisma, storage, service } = setup();
 
-    await service.remove('project-1', { confirmationName: project.name });
+    await service.remove('project-1', { confirmationName: project.name }, 'admin-1');
 
     expect(prisma.project.delete).toHaveBeenCalledWith({ where: { id: 'project-1' } });
     expect(storage.deleteObject).toHaveBeenCalledTimes(2);
+    // Le journal survit à la suppression : il n'est plus rattaché au projet.
+    expect(prisma.activityLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        projectId: null,
+        entityId: 'project-1',
+        actorId: 'admin-1',
+        action: 'deleted',
+      }),
+    });
+  });
+});
+
+describe('ProjectsService.list — périmètre de visibilité', () => {
+  const base = {
+    email: 'x@example.com',
+    name: 'X',
+    jobTitle: null,
+    avatarUrl: null,
+  };
+  const SUPER_ADMIN = { ...base, id: 'super-1', globalRole: GlobalRole.ADMIN, isSuperAdmin: true };
+  const ADMIN = { ...base, id: 'admin-1', globalRole: GlobalRole.ADMIN, isSuperAdmin: false };
+  const MEMBER = { ...base, id: 'member-1', globalRole: GlobalRole.MEMBER, isSuperAdmin: false };
+  const QUERY = { page: 1, pageSize: 20 } as Parameters<ProjectsService['list']>[1];
+
+  function setup() {
+    const prisma = {
+      project: {
+        count: jest.fn().mockReturnValue('count'),
+        findMany: jest.fn().mockReturnValue('rows'),
+      },
+      $transaction: jest.fn().mockResolvedValue([0, []]),
+    };
+    const access = { getRolesForProjects: jest.fn().mockResolvedValue(new Map()) };
+    const service = new ProjectsService(
+      prisma as unknown as ConstructorParameters<typeof ProjectsService>[0],
+      access as unknown as ConstructorParameters<typeof ProjectsService>[1],
+      {} as ConstructorParameters<typeof ProjectsService>[2],
+      {} as ConstructorParameters<typeof ProjectsService>[3],
+    );
+    return { prisma, service };
+  }
+
+  const whereOf = (prisma: ReturnType<typeof setup>['prisma']) =>
+    (prisma.project.findMany.mock.calls[0] as [{ where: Record<string, unknown> }])[0].where;
+
+  it('le super administrateur voit tous les projets', async () => {
+    const { prisma, service } = setup();
+    await service.list(SUPER_ADMIN, QUERY);
+    expect(whereOf(prisma)).not.toHaveProperty('members');
+  });
+
+  it.each([
+    ['administrateur', ADMIN],
+    ['membre', MEMBER],
+  ])("l'%s ne voit que ses projets, total compris", async (_label, user) => {
+    const { prisma, service } = setup();
+    await service.list(user, QUERY);
+
+    const expected = { members: { some: { userId: user.id } } };
+    expect(whereOf(prisma)).toMatchObject(expected);
+    expect(prisma.project.count).toHaveBeenCalledWith({ where: expect.objectContaining(expected) });
   });
 });

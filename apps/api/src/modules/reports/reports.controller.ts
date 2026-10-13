@@ -38,6 +38,6 @@ export class ReportsController {
     @CurrentUser() user: AuthenticatedUser,
     @Query(new ZodValidationPipe(globalSearchQuerySchema)) query: GlobalSearchQuery,
   ): Promise<SearchResult[]> {
-    return this.reports.search(user.id, query.q);
+    return this.reports.search(user, query.q);
   }
 }

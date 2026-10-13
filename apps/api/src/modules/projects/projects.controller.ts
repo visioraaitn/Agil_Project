@@ -104,10 +104,11 @@ export class ProjectsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Suppression définitive du projet après confirmation de son nom' })
   async remove(
+    @CurrentUser() user: AuthenticatedUser,
     @ProjectId() projectId: string,
     @Body(new ZodValidationPipe(deleteProjectSchema)) dto: DeleteProjectInput,
   ): Promise<void> {
-    await this.projects.remove(projectId, dto);
+    await this.projects.remove(projectId, dto, user.id);
   }
 
   // --- Membres ------------------------------------------------------------
@@ -122,21 +123,23 @@ export class ProjectsController {
   @RequirePermission('project:member:manage')
   @ApiOperation({ summary: 'Affectation d’un utilisateur au projet' })
   addMember(
+    @CurrentUser() user: AuthenticatedUser,
     @ProjectId() projectId: string,
     @Body(new ZodValidationPipe(addProjectMemberSchema)) dto: AddProjectMemberInput,
   ): Promise<ProjectMemberSummary> {
-    return this.projects.addMember(projectId, dto);
+    return this.projects.addMember(projectId, dto, user.id);
   }
 
   @Patch(':projectId/members/:userId')
   @RequirePermission('project:member:manage')
   @ApiOperation({ summary: 'Changement de rôle ou de capacité d’un membre' })
   updateMember(
+    @CurrentUser() user: AuthenticatedUser,
     @ProjectId() projectId: string,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Body(new ZodValidationPipe(updateProjectMemberSchema)) dto: UpdateProjectMemberInput,
   ): Promise<ProjectMemberSummary> {
-    return this.projects.updateMember(projectId, userId, dto);
+    return this.projects.updateMember(projectId, userId, dto, user.id);
   }
 
   @Delete(':projectId/members/:userId')
@@ -144,9 +147,10 @@ export class ProjectsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Retrait d’un membre du projet' })
   async removeMember(
+    @CurrentUser() user: AuthenticatedUser,
     @ProjectId() projectId: string,
     @Param('userId', ParseUUIDPipe) userId: string,
   ): Promise<void> {
-    await this.projects.removeMember(projectId, userId);
+    await this.projects.removeMember(projectId, userId, user.id);
   }
 }

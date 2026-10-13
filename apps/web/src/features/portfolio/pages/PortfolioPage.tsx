@@ -38,7 +38,7 @@ function formatDate(iso: string | null): string {
 
 /** B.2 · Vue portefeuille : tous les projets sur un tableau unique. */
 export function PortfolioPage() {
-  const { isAdmin } = useAuth();
+  const { canCreateProject } = useAuth();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<ProjectStatus | ''>('');
   const [sortBy, setSortBy] = useState<
@@ -73,7 +73,7 @@ export function PortfolioPage() {
           breadcrumbs={[{ label: 'visioPlanner' }, { label: 'Portefeuille' }]}
           count={data ? `${data.total} projet${data.total > 1 ? 's' : ''}` : undefined}
           actions={
-            isAdmin && (
+            canCreateProject && (
               <Button variant="primary" onClick={() => setDialogOpen(true)}>
                 <Plus strokeWidth={2.5} />
                 Nouveau projet
@@ -152,12 +152,12 @@ export function PortfolioPage() {
             <EmptyState
               title="Aucun projet"
               description={
-                isAdmin
+                canCreateProject
                   ? 'Créez un premier projet pour démarrer.'
-                  : "Vous n'êtes membre d'aucun projet. Demandez à un administrateur de vous affecter."
+                  : "Vous n'êtes membre d'aucun projet. Demandez au super administrateur de vous y affecter."
               }
               action={
-                isAdmin ? (
+                canCreateProject ? (
                   <Button variant="primary" onClick={() => setDialogOpen(true)}>
                     Créer un projet
                   </Button>

@@ -6,8 +6,8 @@ export type AuthStatus = 'loading' | 'authenticated' | 'anonymous';
 export interface AuthState {
   status: AuthStatus;
   user: AuthenticatedUser | null;
-  /** Administration technique de la plateforme. */
-  isAdmin: boolean;
+  /** Création de projet — réservée au super administrateur. */
+  canCreateProject: boolean;
   /** Gestion des comptes membres, accessible aux administrateurs. */
   canManageUsers: boolean;
   /** Gestion des comptes administrateurs, réservée au super administrateur. */
