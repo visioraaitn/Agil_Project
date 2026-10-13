@@ -9,15 +9,22 @@ interface FakeItem {
   id: string;
   rank: string;
   boardRank: string;
+  /** Projet du ticket ; `PROJECT_ID` par défaut. */
+  projectId?: string;
 }
 
+/** `findFirst` sert aux deux usages : voisin par `id` (borné au projet) et fin de liste. */
 function fakePrisma(items: FakeItem[], last: FakeItem | null = null) {
   return {
     workItem: {
-      findUnique: jest.fn(({ where }: { where: { id: string } }) =>
-        Promise.resolve(items.find((item) => item.id === where.id) ?? null),
-      ),
-      findFirst: jest.fn(() => Promise.resolve(last)),
+      findFirst: jest.fn(({ where }: { where: { id?: string; projectId: string } }) => {
+        if (where.id === undefined) return Promise.resolve(last);
+        const item = items.find(
+          (candidate) =>
+            candidate.id === where.id && (candidate.projectId ?? PROJECT_ID) === where.projectId,
+        );
+        return Promise.resolve(item ?? null);
+      }),
     },
   } as unknown as PrismaService;
 }
@@ -103,6 +110,15 @@ describe('RankingService', () => {
 
     expect(rank > 'a').toBe(true);
     expect(rank < 'c').toBe(true);
+  });
+
+  it("ignore un voisin d'un autre projet (son rang ne sert ni ne fuit)", async () => {
+    const foreign: FakeItem = { id: 'x', rank: 'm', boardRank: 'm', projectId: 'other-project' };
+    const service = new RankingService(fakePrisma([foreign], null));
+
+    const rank = await service.computeRank('rank', { beforeId: 'x' }, { projectId: PROJECT_ID });
+
+    expect(rank).toBe(INITIAL_RANK);
   });
 
   it('supporte des insertions répétées au même endroit', async () => {

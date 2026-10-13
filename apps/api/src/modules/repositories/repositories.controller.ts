@@ -15,13 +15,17 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ProjectId } from '../../common/decorators/project-id.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { ProjectAccessService } from '../access/project-access.service';
 import { RepositoriesService } from './repositories.service';
 
 @ApiTags('repositories')
 @ApiParam({ name: 'projectId', description: 'UUID du projet ou clé courte (ex. VIS)' })
 @Controller('projects/:projectId/repositories')
 export class RepositoriesController {
-  constructor(private readonly repositories: RepositoriesService) {}
+  constructor(
+    private readonly repositories: RepositoriesService,
+    private readonly access: ProjectAccessService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Dépôts Git référencés du projet' })
@@ -84,14 +88,20 @@ export class RepositoriesController {
   @Delete(':repositoryId/branches/:branchId')
   @RequirePermission('branch:delete')
   @ApiOperation({ summary: 'Supprime une branche avec validation de protection et de PR active' })
-  deleteBranch(
+  async deleteBranch(
     @ProjectId() projectId: string,
     @Param('repositoryId', ParseUUIDPipe) repositoryId: string,
     @Param('branchId', ParseUUIDPipe) branchId: string,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<{ ok: boolean }> {
-    return this.repositories
-      .deleteBranch(projectId, repositoryId, branchId, user.id, user.globalRole)
-      .then(() => ({ ok: true }));
+    const canManageRepository = await this.access.can(user, projectId, 'repo:manage');
+    await this.repositories.deleteBranch(
+      projectId,
+      repositoryId,
+      branchId,
+      user.id,
+      canManageRepository,
+    );
+    return { ok: true };
   }
 }

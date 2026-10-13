@@ -7,18 +7,28 @@ import { GlobalRole, ProjectRole } from './enums';
  * le serveur l'applique, le client s'en sert seulement pour masquer/désactiver
  * les commandes. Le client n'est jamais la sécurité.
  *
- * La lecture d'un projet est implicite : être membre suffit.
+ * Trois niveaux, refus par défaut :
+ * - **Super administrateur** (`GlobalRole.ADMIN` + `isSuperAdmin`) : voit et
+ *   administre tous les projets ; seul à créer un projet et à en gérer les membres.
+ * - **Administrateur** (`GlobalRole.ADMIN`) : comptes de la plateforme, et
+ *   administration complète des seuls projets dont il est membre.
+ * - **Membre** (`GlobalRole.MEMBER`) : droits de son rôle projet, sans jamais
+ *   administrer le projet, ses sprints ni l'import, quel que soit ce rôle.
+ *
+ * La lecture d'un projet est implicite : être membre suffit (`hasProjectAccess`).
  */
 export const PERMISSIONS = [
-  // Plateforme (réservé au GlobalRole ADMIN)
+  // Plateforme
   'user:manage',
   'project:create',
+  'project:member:manage',
+
+  // Administration d'un projet
   'project:delete',
   'project:document:manage',
   'project:update',
-  'project:member:manage',
+  'workitem:import',
 
-  // Projet
   // Dépôts & Branches
   'repo:manage',
   'branch:create',
@@ -39,6 +49,7 @@ export const PERMISSIONS = [
   // Sprints
   'sprint:manage',
   'sprint:close',
+  'sprint:plan', // composition d'un sprint : y affecter ou en retirer des tickets
   'retro:manage',
 
   // Pull requests (Workflow Azure DevOps)
@@ -59,6 +70,29 @@ export const PERMISSIONS = [
 
 export type Permission = (typeof PERMISSIONS)[number];
 
+/** Réservé au super administrateur, seul à voir tous les projets. */
+export const SUPER_ADMIN_PERMISSIONS: readonly Permission[] = [
+  'project:create',
+  'project:member:manage',
+];
+
+/** Accordé à tout administrateur, hors de tout projet. */
+export const PLATFORM_PERMISSIONS: readonly Permission[] = ['user:manage'];
+
+/**
+ * Administration d'un projet : un administrateur membre du projet (ou le super
+ * administrateur). Jamais accordée à un `GlobalRole.MEMBER`, même Project Lead.
+ */
+export const PROJECT_ADMIN_PERMISSIONS: readonly Permission[] = [
+  'project:update',
+  'project:delete',
+  'project:document:manage',
+  'workitem:import',
+  'sprint:manage',
+  'sprint:close',
+  'sprint:plan',
+];
+
 const PROJECT_LEAD_PERMISSIONS: readonly Permission[] = [
   'board:configure',
   'repo:manage',
@@ -73,8 +107,6 @@ const PROJECT_LEAD_PERMISSIONS: readonly Permission[] = [
   'workitem:move',
   'backlog:reorder',
   'attachment:manage',
-  'sprint:manage',
-  'sprint:close',
   'retro:manage',
   'pr:declare',
   'pr:approve',
@@ -94,6 +126,7 @@ const MEMBER_PERMISSIONS: readonly Permission[] = [
   'tag:manage',
   'workitem:create',
   'workitem:update',
+  'workitem:delete',
   'workitem:assign',
   'workitem:move',
   'attachment:manage',
@@ -105,34 +138,53 @@ const MEMBER_PERMISSIONS: readonly Permission[] = [
   'report:view',
 ];
 
+/** Droits d'un `GlobalRole.MEMBER` selon son rôle sur le projet. */
 export const ROLE_PERMISSIONS: Record<ProjectRole, readonly Permission[]> = {
   [ProjectRole.PROJECT_LEAD]: PROJECT_LEAD_PERMISSIONS,
   [ProjectRole.MEMBER]: MEMBER_PERMISSIONS,
 };
 
-/** Permissions accordées au seul GlobalRole ADMIN, hors de tout projet. */
-export const PLATFORM_PERMISSIONS: readonly Permission[] = [
-  'user:manage',
-  'project:create',
-  'project:delete',
-  'project:document:manage',
-  'project:update',
-  'project:member:manage',
-];
-
 export interface AccessContext {
   globalRole: GlobalRole;
+  /** Super administrateur ; absent = non. */
+  isSuperAdmin?: boolean;
   /** Rôle sur le projet concerné ; `null` si l'utilisateur n'en est pas membre. */
   projectRole?: ProjectRole | null;
 }
 
-/** Un administrateur dispose des droits plateforme. La gestion d'un compte
- * ADMIN est contrôlée séparément par `isSuperAdmin` dans le service users. */
+/** Le drapeau `isSuperAdmin` n'a d'effet que sur un compte ADMIN. */
+export function isSuperAdministrator(subject: {
+  globalRole: GlobalRole;
+  isSuperAdmin?: boolean;
+}): boolean {
+  return subject.globalRole === GlobalRole.ADMIN && subject.isSuperAdmin === true;
+}
+
+/**
+ * Accès en lecture à un projet : le super administrateur partout, les autres
+ * seulement sur les projets dont ils sont membres. Rôle inconnu = refus.
+ */
+export function hasProjectAccess(ctx: AccessContext): boolean {
+  if (isSuperAdministrator(ctx)) return true;
+  if (ctx.globalRole !== GlobalRole.ADMIN && ctx.globalRole !== GlobalRole.MEMBER) return false;
+  return Boolean(ctx.projectRole);
+}
+
 export function can(ctx: AccessContext, permission: Permission): boolean {
-  if (ctx.globalRole === GlobalRole.ADMIN) return true;
+  if (isSuperAdministrator(ctx)) return true;
+  if (SUPER_ADMIN_PERMISSIONS.includes(permission)) return false;
+
+  if (ctx.globalRole === GlobalRole.ADMIN) {
+    if (PLATFORM_PERMISSIONS.includes(permission)) return true;
+    // Tout le projet, mais seulement là où il est membre.
+    return Boolean(ctx.projectRole);
+  }
+
+  if (ctx.globalRole !== GlobalRole.MEMBER || !ctx.projectRole) return false;
   if (PLATFORM_PERMISSIONS.includes(permission)) return false;
-  if (!ctx.projectRole) return false;
-  return ROLE_PERMISSIONS[ctx.projectRole].includes(permission);
+  if (PROJECT_ADMIN_PERMISSIONS.includes(permission)) return false;
+  const granted = ROLE_PERMISSIONS[ctx.projectRole] as readonly Permission[] | undefined;
+  return granted?.includes(permission) ?? false;
 }
 
 export function isPlatformAdministrator(role: GlobalRole): boolean {

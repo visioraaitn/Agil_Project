@@ -28,8 +28,8 @@ export class RankingService {
     fallbackScope: { projectId: string; parentId?: string | null; status?: string },
   ): Promise<string> {
     const [before, after] = await Promise.all([
-      this.rankOf(field, neighbours.beforeId),
-      this.rankOf(field, neighbours.afterId),
+      this.rankOf(field, fallbackScope.projectId, neighbours.beforeId),
+      this.rankOf(field, fallbackScope.projectId, neighbours.afterId),
     ]);
 
     if (before && after && before >= after) {
@@ -82,10 +82,15 @@ export class RankingService {
     };
   }
 
-  private async rankOf(field: RankField, itemId?: string | null): Promise<string | null> {
+  /** Un voisin d'un autre projet est ignoré : son rang ne doit ni fuiter ni servir. */
+  private async rankOf(
+    field: RankField,
+    projectId: string,
+    itemId?: string | null,
+  ): Promise<string | null> {
     if (!itemId) return null;
-    const item = await this.prisma.workItem.findUnique({
-      where: { id: itemId },
+    const item = await this.prisma.workItem.findFirst({
+      where: { id: itemId, projectId, deletedAt: null },
       select: { rank: true, boardRank: true },
     });
     return item ? item[field] : null;

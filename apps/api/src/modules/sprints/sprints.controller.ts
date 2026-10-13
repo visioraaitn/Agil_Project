@@ -82,11 +82,12 @@ export class SprintsController {
   @HttpCode(200)
   @ApiOperation({ summary: 'Cloture du sprint avec figeage des points' })
   close(
+    @CurrentUser() user: AuthenticatedUser,
     @ProjectId() projectId: string,
     @Param('sprintId', ParseUUIDPipe) sprintId: string,
     @Body(new ZodValidationPipe(closeSprintSchema)) dto: CloseSprintInput,
   ): Promise<SprintDetail> {
-    return this.sprints.close(projectId, sprintId, dto);
+    return this.sprints.close(projectId, sprintId, dto, user.id);
   }
 
   @Patch('sprints/:sprintId/retrospective')

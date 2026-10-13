@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { GlobalRole, type AuthenticatedUser, type LoginInput } from '@visiora/shared';
+import { can, type AuthenticatedUser, type LoginInput } from '@visiora/shared';
 import { SESSION_EXPIRED_EVENT, setAccessToken } from '@/lib/api-client';
 import { authApi } from './api';
 import { AuthContext, type AuthState, type AuthStatus } from './auth-context';
@@ -69,19 +69,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(nextUser);
   }, []);
 
-  const value = useMemo<AuthState>(
-    () => ({
+  const value = useMemo<AuthState>(() => {
+    // Droits hors projet, tirés de la même matrice que l'API (`projectRole: null`).
+    const platform = user ? { globalRole: user.globalRole, isSuperAdmin: user.isSuperAdmin } : null;
+    return {
       status,
       user,
-      isAdmin: user?.globalRole === GlobalRole.ADMIN,
-      canManageUsers: user?.globalRole === GlobalRole.ADMIN,
+      canCreateProject: platform !== null && can(platform, 'project:create'),
+      canManageUsers: platform !== null && can(platform, 'user:manage'),
       canManageAdmins: user?.isSuperAdmin === true,
       login,
       logout,
       refreshUser,
-    }),
-    [status, user, login, logout, refreshUser],
-  );
+    };
+  }, [status, user, login, logout, refreshUser]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

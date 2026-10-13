@@ -139,10 +139,12 @@ export function BacklogPage() {
           actions={
             can('workitem:create') && (
               <>
-                <Button variant="secondary" onClick={() => setImportOpen(true)}>
-                  <Upload strokeWidth={2} />
-                  Importer
-                </Button>
+                {can('workitem:import') && (
+                  <Button variant="secondary" onClick={() => setImportOpen(true)}>
+                    <Upload strokeWidth={2} />
+                    Importer
+                  </Button>
+                )}
                 <Button variant="primary" onClick={() => setDialogOpen(true)}>
                   <Plus strokeWidth={2.5} />
                   Nouveau ticket

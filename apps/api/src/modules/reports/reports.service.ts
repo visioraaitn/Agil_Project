@@ -9,6 +9,7 @@ import {
   WorkItemType,
 } from '@visiora/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AccessSubject, visibleProjectsWhere } from '../access/project-access.service';
 import {
   WORK_ITEM_KEY_SELECT,
   WORK_ITEM_SUMMARY_SELECT,
@@ -146,11 +147,17 @@ export class ReportsService {
     ].sort((a, b) => a.start.localeCompare(b.start));
   }
 
-  async search(userId: string, query: string): Promise<SearchResult[]> {
+  /**
+   * Chaque résultat est borné, dans la requête, aux projets visibles par
+   * l'utilisateur (tous pour le super administrateur, sinon ses projets).
+   * Avoir créé un projet n'y donne plus accès une fois retiré de ses membres.
+   */
+  async search(user: AccessSubject, query: string): Promise<SearchResult[]> {
+    const visible = visibleProjectsWhere(user);
     const [projects, workItems, sprints, pullRequests] = await Promise.all([
       this.prisma.project.findMany({
         where: {
-          OR: [{ members: { some: { userId } } }, { createdById: userId }],
+          ...visible,
           name: { contains: query, mode: 'insensitive' },
         },
         select: { id: true, key: true, name: true, company: true, status: true },
@@ -159,7 +166,7 @@ export class ReportsService {
       this.prisma.workItem.findMany({
         where: {
           deletedAt: null,
-          project: { members: { some: { userId } } },
+          project: visible,
           OR: [
             { title: { contains: query, mode: 'insensitive' } },
             { description: { contains: query, mode: 'insensitive' } },
@@ -176,7 +183,7 @@ export class ReportsService {
       }),
       this.prisma.sprint.findMany({
         where: {
-          project: { members: { some: { userId } } },
+          project: visible,
           name: { contains: query, mode: 'insensitive' },
         },
         select: { id: true, name: true, status: true, project: { select: { key: true } } },
@@ -184,7 +191,7 @@ export class ReportsService {
       }),
       this.prisma.pullRequest.findMany({
         where: {
-          workItem: { project: { members: { some: { userId } } } },
+          workItem: { project: visible },
           title: { contains: query, mode: 'insensitive' },
         },
         select: {

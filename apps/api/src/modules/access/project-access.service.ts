@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { ProjectRole as PrismaProjectRole } from '@prisma/client';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, ProjectRole as PrismaProjectRole } from '@prisma/client';
 import {
   AccessContext,
   GlobalRole,
@@ -7,15 +7,27 @@ import {
   ProjectAccess,
   ProjectRole,
   can,
+  isSuperAdministrator,
   permissionsFor,
 } from '@visiora/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Identité relue en base par le guard JWT — jamais fournie par le client. */
 export interface AccessSubject {
   id: string;
   globalRole: GlobalRole;
+  isSuperAdmin?: boolean;
+}
+
+/**
+ * Filtre Prisma des projets visibles : tous pour le super administrateur,
+ * sinon ceux dont l'utilisateur est membre. Appliqué dans la requête, jamais
+ * après coup : un projet hors périmètre ne doit pas même être chargé.
+ */
+export function visibleProjectsWhere(subject: AccessSubject): Prisma.ProjectWhereInput {
+  return isSuperAdministrator(subject) ? {} : { members: { some: { userId: subject.id } } };
 }
 
 /**
@@ -38,7 +50,8 @@ export class ProjectAccessService {
       where: { key: idOrKey.toUpperCase() },
       select: { id: true },
     });
-    if (!project) throw new NotFoundException({ code: 'PROJECT_NOT_FOUND', message: "Ce projet n'existe pas" });
+    if (!project)
+      throw new NotFoundException({ code: 'PROJECT_NOT_FOUND', message: "Ce projet n'existe pas" });
     return project.id;
   }
 
@@ -53,12 +66,33 @@ export class ProjectAccessService {
   async getAccessContext(subject: AccessSubject, projectId: string | null): Promise<AccessContext> {
     return {
       globalRole: subject.globalRole,
+      isSuperAdmin: subject.isSuperAdmin === true,
       projectRole: projectId ? await this.getProjectRole(subject.id, projectId) : null,
     };
   }
 
-  async can(subject: AccessSubject, projectId: string | null, permission: Permission): Promise<boolean> {
+  async can(
+    subject: AccessSubject,
+    projectId: string | null,
+    permission: Permission,
+  ): Promise<boolean> {
     return can(await this.getAccessContext(subject, projectId), permission);
+  }
+
+  /**
+   * Contrôle d'une permission portée par un champ du corps de requête (et non
+   * par la route), par exemple l'affectation d'un ticket à un sprint.
+   */
+  async assertCan(
+    subject: AccessSubject,
+    projectId: string,
+    permission: Permission,
+  ): Promise<void> {
+    if (await this.can(subject, projectId, permission)) return;
+    throw new ForbiddenException({
+      code: 'PERMISSION_DENIED',
+      message: `Cette action requiert la permission « ${permission} »`,
+    });
   }
 
   /** Droits effectifs envoyés au front pour masquer les commandes interdites. */
@@ -72,7 +106,10 @@ export class ProjectAccessService {
   }
 
   /** Rôles de l'utilisateur sur plusieurs projets, en une requête. */
-  async getRolesForProjects(userId: string, projectIds: string[]): Promise<Map<string, ProjectRole>> {
+  async getRolesForProjects(
+    userId: string,
+    projectIds: string[],
+  ): Promise<Map<string, ProjectRole>> {
     if (projectIds.length === 0) return new Map();
 
     const memberships = await this.prisma.projectMember.findMany({

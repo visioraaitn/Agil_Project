@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import {
   CloseSprintInput,
   CreateSprintInput,
+  EntityType,
   ListSprintsQuery,
   RoadmapEpic,
   SprintDateIssue,
@@ -122,7 +123,12 @@ export class SprintsService {
     return this.getById(projectId, sprintId);
   }
 
-  async close(projectId: string, sprintId: string, input: CloseSprintInput): Promise<SprintDetail> {
+  async close(
+    projectId: string,
+    sprintId: string,
+    input: CloseSprintInput,
+    actorId: string,
+  ): Promise<SprintDetail> {
     const sprint = await this.prisma.sprint.findFirst({
       where: { id: sprintId, projectId },
       select: { id: true, status: true },
@@ -207,6 +213,17 @@ export class SprintsService {
           completedPoints,
           closedAt: new Date(),
           retroSummary: input.retroSummary ?? undefined,
+        },
+      });
+
+      await tx.activityLog.create({
+        data: {
+          projectId,
+          entityType: EntityType.SPRINT,
+          entityId: sprintId,
+          actorId,
+          action: 'closed',
+          metadata: { committedPoints, completedPoints, unfinished: unfinished.length },
         },
       });
     });

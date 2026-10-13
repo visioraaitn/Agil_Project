@@ -6,7 +6,6 @@ import {
   CreateProjectInput,
   DeleteProjectInput,
   EntityType,
-  isPlatformAdministrator,
   ListProjectsQuery,
   NotificationType,
   Paginated,
@@ -21,7 +20,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { seedProjectTags } from '../../../prisma/default-tags';
 import { seedProjectLabels } from '../../../prisma/default-labels';
-import { ProjectAccessService } from '../access/project-access.service';
+import { ProjectAccessService, visibleProjectsWhere } from '../access/project-access.service';
 import { EmailService } from '../collaboration/email.service';
 import { ObjectStorageService } from '../storage/object-storage.service';
 
@@ -69,19 +68,19 @@ export class ProjectsService {
   ) {}
 
   /**
-   * Un administrateur voit tous les projets ; les autres ne voient que ceux dont
-   * ils sont membres — la liste ne doit pas révéler l'existence de projets
-   * auxquels on n'a pas accès.
+   * Seul le super administrateur voit tous les projets ; les autres — un
+   * administrateur compris — ne voient que ceux dont ils sont membres. Le filtre
+   * est dans la requête : la liste et son total ne révèlent aucun autre projet.
    */
   async list(
     user: AuthenticatedUser,
     query: ListProjectsQuery,
   ): Promise<Paginated<ProjectSummary>> {
-    const isAdmin = isPlatformAdministrator(user.globalRole);
-    const restrictToMemberships = !isAdmin || query.mine === true;
+    const scope =
+      query.mine === true ? { members: { some: { userId: user.id } } } : visibleProjectsWhere(user);
 
     const where: Prisma.ProjectWhereInput = {
-      ...(restrictToMemberships ? { members: { some: { userId: user.id } } } : {}),
+      ...scope,
       ...(query.status ? { AND: [projectStatusFilter(query.status)] } : {}),
       ...(query.search
         ? {
@@ -152,6 +151,10 @@ export class ProjectsService {
 
     await seedProjectTags(this.prisma, project.id);
     await seedProjectLabels(this.prisma, project.id);
+    await this.audit(creatorId, project.id, project.id, 'created', {
+      key: project.key,
+      name: project.name,
+    });
 
     return toProjectSummary(project, ProjectRole.PROJECT_LEAD);
   }
@@ -183,10 +186,11 @@ export class ProjectsService {
     return toProjectSummary(project, await this.access.getProjectRole(user.id, projectId));
   }
 
-  async remove(projectId: string, input: DeleteProjectInput): Promise<void> {
+  async remove(projectId: string, input: DeleteProjectInput, actorId: string): Promise<void> {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
       select: {
+        key: true,
         name: true,
         documents: { select: { storageKey: true } },
         workItems: {
@@ -213,6 +217,8 @@ export class ProjectsService {
     // projet partiellement supprimé et encore accessible. Les éventuels objets
     // orphelins sont inaccessibles et leur échec de nettoyage est journalisé.
     await this.prisma.project.delete({ where: { id: projectId } });
+    // Journal détaché du projet : la suppression en cascade l'effacerait sinon.
+    await this.audit(actorId, null, projectId, 'deleted', { key: project.key, name: project.name });
     const cleanup = await Promise.allSettled(
       storageKeys.map((storageKey) => this.storage.deleteObject(storageKey)),
     );
@@ -235,7 +241,11 @@ export class ProjectsService {
     return members.map(toMemberSummary);
   }
 
-  async addMember(projectId: string, input: AddProjectMemberInput): Promise<ProjectMemberSummary> {
+  async addMember(
+    projectId: string,
+    input: AddProjectMemberInput,
+    actorId: string,
+  ): Promise<ProjectMemberSummary> {
     const user = await this.prisma.user.findFirst({
       where: { id: input.userId, deletedAt: null },
       select: { id: true, isActive: true },
@@ -286,6 +296,10 @@ export class ProjectsService {
     });
 
     await this.email.sendNotification(member.user.email, title, body);
+    await this.audit(actorId, projectId, projectId, 'member_added', {
+      userId: input.userId,
+      role: member.role,
+    });
 
     return toMemberSummary(member);
   }
@@ -294,6 +308,7 @@ export class ProjectsService {
     projectId: string,
     userId: string,
     input: UpdateProjectMemberInput,
+    actorId: string,
   ): Promise<ProjectMemberSummary> {
     await this.assertMemberExists(projectId, userId);
     if (input.role && input.role !== ProjectRole.PROJECT_LEAD) {
@@ -308,15 +323,44 @@ export class ProjectsService {
       },
       select: MEMBER_FIELDS,
     });
+    if (input.role !== undefined) {
+      await this.audit(actorId, projectId, projectId, 'member_role_changed', {
+        userId,
+        role: input.role,
+      });
+    }
     return toMemberSummary(member);
   }
 
-  async removeMember(projectId: string, userId: string): Promise<void> {
+  /** Le retrait prend effet à la requête suivante : les droits sont relus en base. */
+  async removeMember(projectId: string, userId: string, actorId: string): Promise<void> {
     await this.assertMemberExists(projectId, userId);
     await this.assertNotLastProjectLead(projectId, userId);
 
     await this.prisma.projectMember.delete({
       where: { projectId_userId: { projectId, userId } },
+    });
+    await this.audit(actorId, projectId, projectId, 'member_removed', { userId });
+  }
+
+  /** Trace des opérations d'administration sensibles, dans le journal d'activité existant. */
+  private async audit(
+    actorId: string,
+    /** Projet de rattachement ; `null` une fois le projet supprimé. */
+    projectId: string | null,
+    entityId: string,
+    action: string,
+    metadata: Prisma.InputJsonObject,
+  ): Promise<void> {
+    await this.prisma.activityLog.create({
+      data: {
+        projectId,
+        entityType: EntityType.PROJECT,
+        entityId,
+        actorId,
+        action,
+        metadata,
+      },
     });
   }
 

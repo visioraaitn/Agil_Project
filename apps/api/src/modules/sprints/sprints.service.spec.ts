@@ -49,6 +49,7 @@ describe('SprintsService.close', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       sprint: { update: jest.fn().mockResolvedValue(undefined) },
+      activityLog: { create: jest.fn().mockResolvedValue(undefined) },
     };
     const prisma = {
       sprint: {
@@ -74,9 +75,16 @@ describe('SprintsService.close', () => {
       ],
     });
 
-    await service.close(PROJECT_ID, SPRINT_ID, {});
+    await service.close(PROJECT_ID, SPRINT_ID, {}, 'admin-1');
 
     expect(tx.workItem.updateMany).not.toHaveBeenCalled();
+    expect(tx.activityLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        entityId: SPRINT_ID,
+        actorId: 'admin-1',
+        action: 'closed',
+      }),
+    });
     expect(tx.sprint.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -94,7 +102,7 @@ describe('SprintsService.close', () => {
       items: [{ id: 'item-1', storyPoints: 5, status: WorkItemStatus.TODO }],
     });
 
-    await expect(service.close(PROJECT_ID, SPRINT_ID, {})).rejects.toMatchObject({
+    await expect(service.close(PROJECT_ID, SPRINT_ID, {}, 'admin-1')).rejects.toMatchObject({
       response: { code: 'UNFINISHED_ITEMS_ACTION_REQUIRED' },
     });
     expect(tx.sprint.update).not.toHaveBeenCalled();
@@ -114,10 +122,15 @@ describe('SprintsService.close', () => {
       ],
     });
 
-    await service.close(PROJECT_ID, SPRINT_ID, {
-      unfinishedItemsAction: UnfinishedItemsAction.MOVE_TO_SPRINT,
-      targetSprintId: TARGET_ID,
-    });
+    await service.close(
+      PROJECT_ID,
+      SPRINT_ID,
+      {
+        unfinishedItemsAction: UnfinishedItemsAction.MOVE_TO_SPRINT,
+        targetSprintId: TARGET_ID,
+      },
+      'admin-1',
+    );
 
     expect(tx.workItem.updateMany).toHaveBeenCalledWith({
       where: { id: { in: ['bug-open', 'subtask-open'] } },
@@ -139,9 +152,14 @@ describe('SprintsService.close', () => {
       ],
     });
 
-    await service.close(PROJECT_ID, SPRINT_ID, {
-      unfinishedItemsAction: UnfinishedItemsAction.BACKLOG,
-    });
+    await service.close(
+      PROJECT_ID,
+      SPRINT_ID,
+      {
+        unfinishedItemsAction: UnfinishedItemsAction.BACKLOG,
+      },
+      'admin-1',
+    );
 
     expect(tx.workItem.updateMany).toHaveBeenCalledWith({
       where: { id: { in: ['epic-open'] } },
@@ -156,7 +174,7 @@ describe('SprintsService.close', () => {
     });
 
     await expect(
-      service.close(PROJECT_ID, SPRINT_ID, { targetSprintId: SPRINT_ID }),
+      service.close(PROJECT_ID, SPRINT_ID, { targetSprintId: SPRINT_ID }, 'admin-1'),
     ).rejects.toMatchObject({ response: { code: 'INVALID_TARGET_SPRINT' } });
   });
 
@@ -170,7 +188,7 @@ describe('SprintsService.close', () => {
     });
 
     await expect(
-      service.close(PROJECT_ID, SPRINT_ID, { targetSprintId: 'sprint-2' }),
+      service.close(PROJECT_ID, SPRINT_ID, { targetSprintId: 'sprint-2' }, 'admin-1'),
     ).rejects.toMatchObject({ response: { code: 'INVALID_TARGET_SPRINT' } });
   });
 
@@ -181,7 +199,7 @@ describe('SprintsService.close', () => {
     });
 
     await expect(
-      service.close(PROJECT_ID, SPRINT_ID, { targetSprintId: 'sprint-2' }),
+      service.close(PROJECT_ID, SPRINT_ID, { targetSprintId: 'sprint-2' }, 'admin-1'),
     ).rejects.toMatchObject({ response: { code: 'INVALID_TARGET_SPRINT' } });
   });
 });
