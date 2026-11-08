@@ -14,7 +14,7 @@ export function Field({ label, htmlFor, error, hint, required, children }: Field
   return (
     <div className="flex flex-col gap-1">
       <label htmlFor={htmlFor} className="text-ink-700 text-sm font-semibold">
-        {label}
+        <span>{label}</span>
         {required && <span className="text-danger ml-0.5">*</span>}
       </label>
       {children}
