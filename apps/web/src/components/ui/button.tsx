@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { Children, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { Spinner } from './spinner';
 
@@ -41,6 +41,7 @@ export function Button({
     <button
       type="button"
       disabled={disabled || loading}
+      aria-busy={loading || undefined}
       className={cn(
         'inline-flex shrink-0 items-center justify-center font-semibold transition-colors disabled:cursor-not-allowed [&_svg]:size-4 [&_svg]:shrink-0',
         VARIANTS[variant],
@@ -50,7 +51,11 @@ export function Button({
       {...props}
     >
       {loading && <Spinner className="size-3.5" />}
-      {children}
+      {/* Keep text inside stable elements: browser translation may replace text
+          nodes, which React must not use as anchors when inserting the spinner. */}
+      {Children.map(children, (child) =>
+        typeof child === 'string' || typeof child === 'number' ? <span>{child}</span> : child,
+      )}
     </button>
   );
 }
