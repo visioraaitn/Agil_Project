@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import * as dns from 'dns';
 import * as nodemailer from 'nodemailer';
 import { EmailService } from './email.service';
 
@@ -15,6 +16,11 @@ describe('EmailService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // Keep unit tests independent of public DNS and avoid waiting on real network lookups.
+    jest.spyOn(dns.promises, 'lookup').mockResolvedValue({
+      address: 'smtp.example.com',
+      family: 4,
+    });
 
     mockTransporter = {
       sendMail: jest.fn().mockResolvedValue({ messageId: 'msg-123', response: '250 OK' }),
@@ -38,6 +44,10 @@ describe('EmailService', () => {
     }).compile();
 
     service = module.get<EmailService>(EmailService);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   describe('sendNotification', () => {

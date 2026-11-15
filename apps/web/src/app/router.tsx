@@ -14,6 +14,7 @@ import { ReposPage } from '@/features/repos/pages/ReposPage';
 import { SettingsPage } from '@/features/settings/pages/SettingsPage';
 import { SprintsPage } from '@/features/sprints/pages/SprintsPage';
 import { UsersPage } from '@/features/admin/pages/UsersPage';
+import { RouteErrorPage } from '@/components/common/RouteErrorPage';
 import { RequireAdmin, RequireAuth } from './guards';
 
 /**
@@ -21,9 +22,10 @@ import { RequireAdmin, RequireAuth } from './guards';
  * placeholders annotés de leur phase et de leur référence au cahier des charges.
  */
 const router = createBrowserRouter([
-  { path: '/login', element: <LoginPage /> },
+  { path: '/login', element: <LoginPage />, errorElement: <RouteErrorPage /> },
   {
     element: <RequireAuth />,
+    errorElement: <RouteErrorPage />,
     children: [
       {
         path: '/',
